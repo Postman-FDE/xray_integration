@@ -1,5 +1,6 @@
 import fs from 'fs';
 import * as xrayService from '../services/xrayService.js';
+import { transformJUnitXml, getTestKeySummary } from '../services/junitTransformer.js';
 import { cleanupFile } from '../middleware/upload.js';
 import { ValidationError, XrayApiError } from '../middleware/errorHandler.js';
 
@@ -30,6 +31,12 @@ export async function syncResults(req, res, next) {
     // Read the XML content
     const xmlContent = fs.readFileSync(filePath, 'utf-8');
 
+    // Transform XML to include test_key properties
+    const transformedXml = transformJUnitXml(xmlContent);
+    const testKeys = getTestKeySummary(xmlContent);
+    
+    console.log(`[SyncController] Transformed XML with test keys: ${testKeys.join(', ')}`);
+
     // Extract options from form fields
     const options = {
       projectKey: req.body.projectKey,
@@ -40,8 +47,8 @@ export async function syncResults(req, res, next) {
 
     console.log('[SyncController] Sync options:', options);
 
-    // Import to Xray
-    const result = await xrayService.importJUnitResults(xmlContent, options);
+    // Import to Xray with transformed XML
+    const result = await xrayService.importJUnitResults(transformedXml, options);
 
     // Clean up uploaded file
     cleanupFile(filePath);
@@ -49,6 +56,7 @@ export async function syncResults(req, res, next) {
     res.json({
       success: true,
       message: 'Test results synced to Xray successfully',
+      testKeysMapped: testKeys,
       xray: {
         testExecKey: result.key,
         testExecId: result.id,
@@ -108,6 +116,37 @@ export async function syncResultsRaw(req, res, next) {
     if (error.message.includes('Xray')) {
       return next(new XrayApiError(error.message));
     }
+    next(error);
+  }
+}
+
+/**
+ * POST /sync/preview
+ * 
+ * Preview the transformed JUnit XML without sending to Xray
+ * Useful for debugging the transformation
+ */
+export async function previewTransform(req, res, next) {
+  let filePath = null;
+
+  try {
+    if (!req.file) {
+      throw new ValidationError('No file uploaded. Please upload a JUnit XML file.');
+    }
+
+    filePath = req.file.path;
+    const xmlContent = fs.readFileSync(filePath, 'utf-8');
+    
+    // Transform XML
+    const transformedXml = transformJUnitXml(xmlContent);
+    const testKeys = getTestKeySummary(xmlContent);
+    
+    // Clean up
+    cleanupFile(filePath);
+
+    res.type('application/xml').send(transformedXml);
+  } catch (error) {
+    cleanupFile(filePath);
     next(error);
   }
 }
