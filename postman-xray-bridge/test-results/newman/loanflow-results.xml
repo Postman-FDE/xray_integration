@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="LoanFlow Tests | Origin E2E Regression" tests="17" time="0.022">
+  <testsuite name="SJP-2 | Change Order API Test / Setup - Create Loan" id="dbfa3a4f-db58-4342-94f7-2978d735e8b1" timestamp="2025-12-15T19:51:29.315Z" tests="3" failures="0" errors="0" time="0.010">
+    <testcase name="Loan created successfully" time="0.010" classname="Sjp2ChangeOrderApiTestSetupCreateLoan"/>
+    <testcase name="Loan has ACTIVE status" time="0.010" classname="Sjp2ChangeOrderApiTestSetupCreateLoan"/>
+    <testcase name="Loan ID is generated" time="0.010" classname="Sjp2ChangeOrderApiTestSetupCreateLoan"/>
+  </testsuite>
+  <testsuite name="SJP-2 | Change Order API Test / Submit Change Order" id="b9dc3a61-d1ed-42da-a756-6b14a6ef2ae6" timestamp="2025-12-15T19:51:29.315Z" tests="5" failures="0" errors="0" time="0.001">
+    <testcase name="Change order submitted successfully" time="0.001" classname="Sjp2ChangeOrderApiTestSubmitChangeOrder"/>
+    <testcase name="Loan amount is updated" time="0.001" classname="Sjp2ChangeOrderApiTestSubmitChangeOrder"/>
+    <testcase name="Change order is recorded" time="0.001" classname="Sjp2ChangeOrderApiTestSubmitChangeOrder"/>
+    <testcase name="Last change order timestamp is set" time="0.001" classname="Sjp2ChangeOrderApiTestSubmitChangeOrder"/>
+    <testcase name="Change order contains previous and new amount" time="0.001" classname="Sjp2ChangeOrderApiTestSubmitChangeOrder"/>
+  </testsuite>
+  <testsuite name="SJP-2 | Change Order API Test / Verify - Get Updated Loan" id="6ecbf6a9-56ee-4217-988d-c4fe9d0bccc0" timestamp="2025-12-15T19:51:29.315Z" tests="3" failures="0" errors="0" time="0.000">
+    <testcase name="Loan retrieved successfully" time="0.000" classname="Sjp2ChangeOrderApiTestVerifyGetUpdatedLoan"/>
+    <testcase name="Loan reflects updated amount" time="0.000" classname="Sjp2ChangeOrderApiTestVerifyGetUpdatedLoan"/>
+    <testcase name="Loan status remains ACTIVE" time="0.000" classname="Sjp2ChangeOrderApiTestVerifyGetUpdatedLoan"/>
+  </testsuite>
+  <testsuite name="SJP-3 | Cancel Loan API Test / Setup - Create Loan" id="760f0cf6-336f-4f47-b4f8-8cd3750a67eb" timestamp="2025-12-15T19:51:29.315Z" tests="1" failures="0" errors="0" time="0.001">
+    <testcase name="Loan created successfully" time="0.001" classname="Sjp3CancelLoanApiTestSetupCreateLoan"/>
+  </testsuite>
+  <testsuite name="SJP-3 | Cancel Loan API Test / Cancel Loan" id="aa50d2e1-9d28-4953-8147-7ce475f03b36" timestamp="2025-12-15T19:51:29.315Z" tests="4" failures="0" errors="0" time="0.001">
+    <testcase name="Loan cancelled successfully" time="0.001" classname="Sjp3CancelLoanApiTestCancelLoan"/>
+    <testcase name="Status is CANCELLED" time="0.001" classname="Sjp3CancelLoanApiTestCancelLoan"/>
+    <testcase name="Cancel reason is recorded" time="0.001" classname="Sjp3CancelLoanApiTestCancelLoan"/>
+    <testcase name="Cancelled timestamp is set" time="0.001" classname="Sjp3CancelLoanApiTestCancelLoan"/>
+  </testsuite>
+  <testsuite name="SJP-3 | Cancel Loan API Test / Verify - Cannot Cancel Again (409)" id="5731a68e-099b-4c5f-bffa-2f37407f71d0" timestamp="2025-12-15T19:51:29.315Z" tests="2" failures="0" errors="0" time="0.001">
+    <testcase name="Returns 409 Conflict" time="0.001" classname="Sjp3CancelLoanApiTestVerifyCannotCancelAgain409"/>
+    <testcase name="Error message indicates already cancelled" time="0.001" classname="Sjp3CancelLoanApiTestVerifyCannotCancelAgain409"/>
+  </testsuite>
+  <testsuite name="SJP-3 | Cancel Loan API Test / Verify - Cannot Change Order on Cancelled (409)" id="4983ad95-ad63-40fc-a09d-2c1bb94d80e1" timestamp="2025-12-15T19:51:29.315Z" tests="2" failures="0" errors="0" time="0.001">
+    <testcase name="Returns 409 Conflict" time="0.001" classname="Sjp3CancelLoanApiTestVerifyCannotChangeOrderOnCancelled409"/>
+    <testcase name="Error message indicates status must be ACTIVE" time="0.001" classname="Sjp3CancelLoanApiTestVerifyCannotChangeOrderOnCancelled409"/>
+  </testsuite>
+  <testsuite name="SJP-4 | Contract Review - CPC Rejected API Test / Setup - Create Loan" id="c5fbb9d0-5395-45e6-b0e9-eed36e7f6036" timestamp="2025-12-15T19:51:29.315Z" tests="1" failures="0" errors="0" time="0.001">
+    <testcase name="Loan created successfully" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestSetupCreateLoan"/>
+  </testsuite>
+  <testsuite name="SJP-4 | Contract Review - CPC Rejected API Test / Submit Contract Review - REJECTED" id="33f89004-769d-450a-ba8b-57d3ee3f391f" timestamp="2025-12-15T19:51:29.315Z" tests="5" failures="0" errors="0" time="0.001">
+    <testcase name="Contract review submitted successfully" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestSubmitContractReviewRejected"/>
+    <testcase name="Status is CPC_REJECTED" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestSubmitContractReviewRejected"/>
+    <testcase name="Contract review decision is REJECTED" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestSubmitContractReviewRejected"/>
+    <testcase name="Contract review notes are recorded" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestSubmitContractReviewRejected"/>
+    <testcase name="Contract review timestamp is set" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestSubmitContractReviewRejected"/>
+  </testsuite>
+  <testsuite name="SJP-4 | Contract Review - CPC Rejected API Test / Verify - Loan Status is CPC_REJECTED" id="8dc7b3c2-9440-49d7-9cfb-ffd8fbea56f7" timestamp="2025-12-15T19:51:29.315Z" tests="3" failures="0" errors="0" time="0.001">
+    <testcase name="Loan retrieved successfully" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestVerifyLoanStatusIsCpcRejected"/>
+    <testcase name="Status remains CPC_REJECTED" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestVerifyLoanStatusIsCpcRejected"/>
+    <testcase name="Contract review is persisted" time="0.001" classname="Sjp4ContractReviewCpcRejectedApiTestVerifyLoanStatusIsCpcRejected"/>
+  </testsuite>
+  <testsuite name="SJP-4 | Contract Review - CPC Rejected API Test / Verify - Cannot Cancel CPC_REJECTED Loan (409)" id="7a39e940-ebe9-4818-8c26-45d3b08bbfd6" timestamp="2025-12-15T19:51:29.315Z" tests="2" failures="0" errors="0" time="0.000">
+    <testcase name="Returns 409 Conflict" time="0.000" classname="Sjp4ContractReviewCpcRejectedApiTestVerifyCannotCancelCpcRejectedLoan409"/>
+    <testcase name="Error indicates status must be ACTIVE" time="0.000" classname="Sjp4ContractReviewCpcRejectedApiTestVerifyCannotCancelCpcRejectedLoan409"/>
+  </testsuite>
+  <testsuite name="SJP-5 | Submit Project Info API Test / Setup - Create Loan for Project" id="5673519d-fc6b-4a20-8e93-8db42b050c7e" timestamp="2025-12-15T19:51:29.315Z" tests="1" failures="0" errors="0" time="0.000">
+    <testcase name="Loan created successfully" time="0.000" classname="Sjp5SubmitProjectInfoApiTestSetupCreateLoanForProject"/>
+  </testsuite>
+  <testsuite name="SJP-5 | Submit Project Info API Test / Submit Project Info" id="655a0f0a-32fa-4f09-a23f-0d86c78edf1c" timestamp="2025-12-15T19:51:29.315Z" tests="6" failures="0" errors="0" time="0.001">
+    <testcase name="Project created successfully" time="0.001" classname="Sjp5SubmitProjectInfoApiTestSubmitProjectInfo"/>
+    <testcase name="Project ID is generated" time="0.001" classname="Sjp5SubmitProjectInfoApiTestSubmitProjectInfo"/>
+    <testcase name="Project is linked to loan" time="0.001" classname="Sjp5SubmitProjectInfoApiTestSubmitProjectInfo"/>
+    <testcase name="Project name is set correctly" time="0.001" classname="Sjp5SubmitProjectInfoApiTestSubmitProjectInfo"/>
+    <testcase name="TPO info is stored" time="0.001" classname="Sjp5SubmitProjectInfoApiTestSubmitProjectInfo"/>
+    <testcase name="Created timestamp is set" time="0.001" classname="Sjp5SubmitProjectInfoApiTestSubmitProjectInfo"/>
+  </testsuite>
+  <testsuite name="SJP-5 | Submit Project Info API Test / Verify - Project Not Found for Invalid Loan (404)" id="155af1fd-7629-43be-bf61-0afb295e9204" timestamp="2025-12-15T19:51:29.315Z" tests="2" failures="0" errors="0" time="0.001">
+    <testcase name="Returns 404 Not Found" time="0.001" classname="Sjp5SubmitProjectInfoApiTestVerifyProjectNotFoundForInvalidLoan404"/>
+    <testcase name="Error message indicates loan not found" time="0.001" classname="Sjp5SubmitProjectInfoApiTestVerifyProjectNotFoundForInvalidLoan404"/>
+  </testsuite>
+  <testsuite name="SJP-6 | Verify Project Info (TPO) API Test / Get Project by ID" id="33c17709-817c-47e2-a94f-8ed13e9bc0ac" timestamp="2025-12-15T19:51:29.315Z" tests="7" failures="0" errors="0" time="0.001">
+    <testcase name="Project retrieved successfully" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+    <testcase name="Project ID matches request" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+    <testcase name="TPO company name is correct" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+    <testcase name="TPO contact name is correct" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+    <testcase name="TPO email is correct" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+    <testcase name="TPO license number is correct" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+    <testcase name="Project is linked to correct loan" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestGetProjectById"/>
+  </testsuite>
+  <testsuite name="SJP-6 | Verify Project Info (TPO) API Test / Verify - Project Not Found (404)" id="8193406e-b1ae-40b5-bc95-8f652d9817d4" timestamp="2025-12-15T19:51:29.315Z" tests="2" failures="0" errors="0" time="0.001">
+    <testcase name="Returns 404 Not Found" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestVerifyProjectNotFound404"/>
+    <testcase name="Error message indicates project not found" time="0.001" classname="Sjp6VerifyProjectInfoTpoApiTestVerifyProjectNotFound404"/>
+  </testsuite>
+  <testsuite name="SJP-6 | Verify Project Info (TPO) API Test / Verify - List Projects by Loan" id="d7a9271e-6a77-42a8-b1c3-a5bd859890fc" timestamp="2025-12-15T19:51:29.315Z" tests="4" failures="0" errors="0" time="0.000">
+    <testcase name="Projects retrieved successfully" time="0.000" classname="Sjp6VerifyProjectInfoTpoApiTestVerifyListProjectsByLoan"/>
+    <testcase name="Response contains projects array" time="0.000" classname="Sjp6VerifyProjectInfoTpoApiTestVerifyListProjectsByLoan"/>
+    <testcase name="At least one project exists for loan" time="0.000" classname="Sjp6VerifyProjectInfoTpoApiTestVerifyListProjectsByLoan"/>
+    <testcase name="Projects belong to the correct loan" time="0.000" classname="Sjp6VerifyProjectInfoTpoApiTestVerifyListProjectsByLoan"/>
+  </testsuite>
+</testsuites>

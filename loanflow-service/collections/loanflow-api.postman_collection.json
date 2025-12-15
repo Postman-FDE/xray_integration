@@ -1,0 +1,275 @@
+{
+  "info": {
+    "name": "LoanFlow API",
+    "description": "LoanFlow Service API - Complete endpoint reference for loan origination workflows.\n\n## Base URL\n`http://localhost:3000`\n\n## Resources\n- **Loans**: Create, manage, and process loan applications\n- **Projects**: Link projects to loans with TPO information",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "loanId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "projectId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check if the service is running and healthy."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Loans",
+      "item": [
+        {
+          "name": "Create Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('loanId', response.loanId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 250000,\n  \"borrowerName\": \"John Smith\",\n  \"loanType\": \"MORTGAGE\",\n  \"interestRate\": 6.5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/loans",
+              "host": ["{{baseUrl}}"],
+              "path": ["loans"]
+            },
+            "description": "Create a new loan application.\n\n**Request Body:**\n- `amount` (number, required): Loan amount\n- `borrowerName` (string, required): Name of the borrower\n- `loanType` (string, optional): MORTGAGE, PERSONAL, BUSINESS, or AUTO\n- `interestRate` (number, optional): Interest rate percentage"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Loans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/loans",
+              "host": ["{{baseUrl}}"],
+              "path": ["loans"]
+            },
+            "description": "Retrieve all loans in the system."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Loan by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/loans/{{loanId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["loans", "{{loanId}}"]
+            },
+            "description": "Retrieve a specific loan by its ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Change Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newAmount\": 275000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/loans/{{loanId}}/change-order",
+              "host": ["{{baseUrl}}"],
+              "path": ["loans", "{{loanId}}", "change-order"]
+            },
+            "description": "Submit a change order to modify the loan amount.\n\n**Requirements:**\n- Loan status must be ACTIVE\n\n**Request Body:**\n- `newAmount` (number, required): New loan amount"
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Loan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Borrower withdrew application\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/loans/{{loanId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["loans", "{{loanId}}", "cancel"]
+            },
+            "description": "Cancel a loan application.\n\n**Requirements:**\n- Loan status must be ACTIVE\n\n**Request Body:**\n- `reason` (string, required): Cancellation reason"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Contract Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"APPROVED\",\n  \"notes\": \"All documents verified and approved\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/loans/{{loanId}}/contract-review",
+              "host": ["{{baseUrl}}"],
+              "path": ["loans", "{{loanId}}", "contract-review"]
+            },
+            "description": "Submit a contract review decision.\n\n**Request Body:**\n- `decision` (string, required): APPROVED or REJECTED\n- `notes` (string, optional): Review notes\n\n**Side Effects:**\n- If decision is REJECTED, loan status changes to CPC_REJECTED"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('projectId', response.projectId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loanId\": \"{{loanId}}\",\n  \"name\": \"Smith Residence Purchase\",\n  \"tpoInfo\": {\n    \"companyName\": \"ABC Mortgage Brokers\",\n    \"contactName\": \"Jane Doe\",\n    \"email\": \"jane@abcmortgage.com\",\n    \"phone\": \"555-123-4567\",\n    \"licenseNumber\": \"MB-12345\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Create a new project linked to a loan.\n\n**Request Body:**\n- `loanId` (string, required): ID of the associated loan\n- `name` (string, required): Project name\n- `tpoInfo` (object, required): Third Party Originator information"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Retrieve all projects in the system."
+          },
+          "response": []
+        },
+        {
+          "name": "List Projects by Loan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects?loanId={{loanId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [
+                {
+                  "key": "loanId",
+                  "value": "{{loanId}}"
+                }
+              ]
+            },
+            "description": "Retrieve all projects for a specific loan."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Retrieve a specific project by its ID, including TPO information."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
+
