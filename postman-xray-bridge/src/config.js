@@ -5,6 +5,11 @@
  *   XRAY_CLIENT_ID - Your Xray Cloud API client ID
  *   XRAY_CLIENT_SECRET - Your Xray Cloud API client secret
  *   XRAY_BASE_URL - Xray Cloud base URL (default: https://xray.cloud.getxray.app)
+ *   POSTMAN_API_KEY - Your Postman API key
+ *   POSTMAN_WORKSPACE_IDS - Comma-separated list of workspace IDs to sync
+ *                           Example: ws-id-1,ws-id-2,ws-id-3
+ *   SYNC_CRON - Cron expression for sync job (default: every hour)
+ *   SYNC_ENABLED - Enable auto-sync on startup (default: false)
  *   PORT - Server port (default: 4000)
  */
 
@@ -14,6 +19,22 @@ export const config = {
     clientId: process.env.XRAY_CLIENT_ID || '',
     clientSecret: process.env.XRAY_CLIENT_SECRET || '',
     baseUrl: process.env.XRAY_BASE_URL || 'https://xray.cloud.getxray.app',
+  },
+
+  // Postman API settings
+  postmanApiKey: process.env.POSTMAN_API_KEY || '',
+  
+  // Comma-separated list of workspace IDs to sync
+  // Example: POSTMAN_WORKSPACE_IDS=ws-id-1,ws-id-2,ws-id-3
+  postmanWorkspaceIds: (process.env.POSTMAN_WORKSPACE_IDS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(id => id.length > 0),
+
+  // Sync job settings
+  sync: {
+    enabled: process.env.SYNC_ENABLED === 'true',
+    cronExpression: process.env.SYNC_CRON || '0 * * * *', // Every hour
   },
 
   // Server settings
@@ -43,4 +64,6 @@ export function validateConfig() {
 
   return true;
 }
+
+export default config;
 
