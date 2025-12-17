@@ -85,7 +85,8 @@ export async function getCollection(collectionUid) {
   return {
     uid: collectionUid,
     name: collection.info?.name,
-    variable: collection.variable || []
+    variable: collection.variable || [],
+    item: collection.item || []
   };
 }
 
@@ -108,11 +109,12 @@ export async function getCollectionsWithVariables(workspaceId) {
         const details = await getCollection(c.uid);
         return {
           ...c,
-          variable: details.variable
+          variable: details.variable,
+          item: details.item
         };
       } catch (error) {
         console.warn(`[PostmanService] Failed to fetch ${c.uid}: ${error.message}`);
-        return { ...c, variable: [] };
+        return { ...c, variable: [], item: [] };
       }
     })
   );
@@ -142,42 +144,27 @@ export async function getCollectionRuns(collectionUid, options = {}) {
   
   console.log(`[PostmanService] MOCK: Fetching runs for collection ${collectionUid} since=${since}`);
   
-  // MOCK: Return fake runs with STABLE IDs
-  // Using stable IDs so incremental sync logic can be tested properly
+  // MOCK: Generate a new run with current timestamp
+  // This simulates a new collection run happening each time
+  const runId = `run-${Date.now()}`;
   const mockRuns = [
     {
-      id: 'run-001',
+      id: runId,
       collectionUid,
       status: 'completed',
-      startedAt: '2025-12-16T20:00:00.000Z',
-      completedAt: '2025-12-16T20:01:00.000Z',
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
       source: 'manual'
-    },
-    {
-      id: 'run-002',
-      collectionUid,
-      status: 'completed',
-      startedAt: '2025-12-16T21:00:00.000Z',
-      completedAt: '2025-12-16T21:01:00.000Z',
-      source: 'monitor'
-    },
-    {
-      id: 'run-003',
-      collectionUid,
-      status: 'completed',
-      startedAt: '2025-12-16T22:00:00.000Z',
-      completedAt: '2025-12-16T22:01:00.000Z',
-      source: 'cli'
     }
   ];
   
   // Filter out runs we've already synced (if 'since' provided)
-  // Compare by extracting the numeric part of the run ID
+  // Compare timestamps (IDs are like run-1734398400000)
   const newRuns = since 
     ? mockRuns.filter(r => {
-        const sinceNum = parseInt(since.replace('run-', '').split('-')[0], 10) || 0;
-        const runNum = parseInt(r.id.replace('run-', '').split('-')[0], 10) || 0;
-        return runNum > sinceNum;
+        const sinceTs = parseInt(since.replace('run-', ''), 10) || 0;
+        const runTs = parseInt(r.id.replace('run-', ''), 10) || 0;
+        return runTs > sinceTs;
       })
     : mockRuns;
   
@@ -258,5 +245,42 @@ export function filterXrayLinkedCollections(collections) {
 export function getTestPlanId(collection) {
   const variable = collection.variable?.find(v => v.key === 'test-plan-id');
   return variable?.value || null;
+}
+
+/**
+ * Build a map of request ID → folder name
+ * This is needed because Postman CLI JSON doesn't include folder names directly.
+ * The folder name contains the test_key (e.g., "SJP-2 | Create Loan")
+ * 
+ * @param {Object} collection - Collection object with item array
+ * @returns {Object} - Map of request ID to folder name
+ */
+export function buildFolderMap(collection) {
+  const folderMap = {};
+  
+  if (!collection.item || !Array.isArray(collection.item)) {
+    console.log('[buildFolderMap] No items found in collection');
+    return folderMap;
+  }
+  
+  console.log(`[buildFolderMap] Processing ${collection.item.length} top-level items`);
+  
+  // Iterate through folders (top-level items that have nested items)
+  for (const folder of collection.item) {
+    const folderName = folder.name;
+    
+    // Check if this is a folder (has nested items)
+    if (folder.item && Array.isArray(folder.item)) {
+      for (const request of folder.item) {
+        if (request.id) {
+          folderMap[request.id] = folderName;
+        }
+      }
+    }
+  }
+  
+  console.log(`[buildFolderMap] Mapped ${Object.keys(folderMap).length} requests to folders`);
+  
+  return folderMap;
 }
 

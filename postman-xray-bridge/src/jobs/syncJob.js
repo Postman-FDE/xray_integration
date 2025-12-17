@@ -7,7 +7,10 @@
 
 import * as postmanService from '../services/postmanService.js';
 import * as syncState from '../store/syncState.js';
-// import * as xrayService from '../services/xrayService.js';
+import * as xrayService from '../services/xrayService.js';
+import { transformToXrayJson } from '../services/jsonToXrayTransformer.js';
+// Keep JUnit transformer available if needed:
+// import { transformToJUnitXml } from '../services/jsonToJunitTransformer.js';
 
 /**
  * Main sync job - runs periodically
@@ -97,28 +100,28 @@ async function syncCollection(collection) {
   // Process each run
   const syncedRuns = [];
   
+  // Build folder map for this collection (request ID → folder name with test_key)
+  const folderMap = postmanService.buildFolderMap(collection);
+  
   for (const run of runs) {
     console.log(`[SyncJob]   Syncing run: ${run.id}`);
     
     try {
       // Fetch full run results
       const results = await postmanService.getRunResults(uid, run.id);
-      
-      // TODO: Transform results to JUnit XML
-      // const junitXml = transformToJUnitXml(results, testPlanId);
-      
-      // TODO: Push to Xray
-      // const xrayResult = await xrayService.importJUnitResults(junitXml, {
-      //   projectKey: testPlanId.split('-')[0], // Extract project key from SJP-1
-      //   testPlanKey: testPlanId
-      // });
-      
-      // Get executions from the run results (structure: results.run.executions)
       const executions = results.run?.executions || [];
       
-      // For now, just log what we would do
-      console.log(`[SyncJob]     → Would transform ${executions.length} executions`);
-      console.log(`[SyncJob]     → Would push to Xray test plan: ${testPlanId}`);
+      // Transform JSON to Xray JSON format
+      console.log(`[SyncJob]     → Transforming ${executions.length} executions to Xray JSON`);
+      const xrayPayload = transformToXrayJson(results, folderMap, {
+        testPlanKey: testPlanId
+      });
+      
+      // Push to Xray
+      console.log(`[SyncJob]     → Pushing to Xray (test plan: ${testPlanId})`);
+      const xrayResult = await xrayService.importXrayJson(xrayPayload);
+      
+      console.log(`[SyncJob]     ✓ Created test execution: ${xrayResult.key}`);
       
       // Update state after successful sync
       syncState.updateLastSyncedRunId(uid, run.id, {
@@ -129,7 +132,8 @@ async function syncCollection(collection) {
       syncedRuns.push({
         runId: run.id,
         status: 'synced',
-        executionCount: executions.length
+        executionCount: executions.length,
+        xrayTestExecKey: xrayResult.key
       });
       
     } catch (error) {
@@ -152,12 +156,4 @@ async function syncCollection(collection) {
   };
 }
 
-/**
- * Transform run results to JUnit XML
- * TODO: Implement when we figure out the transformation logic
- */
-function transformToJUnitXml(results, testPlanId) {
-  // Placeholder - will implement later
-  throw new Error('Not implemented yet');
-}
 

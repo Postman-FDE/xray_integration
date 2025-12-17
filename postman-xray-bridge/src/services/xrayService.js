@@ -100,6 +100,40 @@ export async function importJUnitResults(xmlContent, options = {}) {
 }
 
 /**
+ * Import Xray JSON results to Xray
+ * 
+ * @param {object} payload - The Xray JSON payload
+ * @returns {object} - Import result with test execution key
+ */
+export async function importXrayJson(payload) {
+  const token = await authenticate();
+  const { baseUrl } = config.xray;
+
+  const url = `${baseUrl}/api/v2/import/execution`;
+
+  console.log(`[XrayService] Importing Xray JSON results to: ${url}`);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  console.log('[XrayService] Import successful:', result);
+
+  return result;
+}
+
+/**
  * Clear cached auth token (useful for testing or re-auth)
  */
 export function clearAuthCache() {
