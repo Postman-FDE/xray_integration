@@ -33,7 +33,7 @@ npm start  # Port 4000
 
 ```bash
 # Run tests
-newman run collection.json -r junit --reporter-junit-export results.xml
+newman run PF_loantests_collection.json -r junit --reporter-junit-export results.xml
 
 # Sync to Xray
 curl -X POST http://localhost:4000/sync \
