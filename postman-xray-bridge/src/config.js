@@ -16,6 +16,13 @@ export const config = {
     baseUrl: process.env.XRAY_BASE_URL || 'https://xray.cloud.getxray.app',
   },
 
+  // Jira API settings (for test resolution)
+  jira: {
+    email: process.env.JIRA_EMAIL || '',
+    apiToken: process.env.JIRA_API_TOKEN || '',
+    baseUrl: process.env.JIRA_BASE_URL || 'https://postmanlabs.atlassian.net',
+  },
+
   // Server settings
   server: {
     port: parseInt(process.env.PORT || '4000', 10),

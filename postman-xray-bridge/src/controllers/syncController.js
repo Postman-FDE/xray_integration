@@ -1,8 +1,10 @@
 import fs from 'fs';
 import * as xrayService from '../services/xrayService.js';
-import { transformJUnitXml, getTestKeySummary } from '../services/junitTransformer.js';
+import { transformJUnitXml, getTestKeySummary, replaceTestKeys } from '../services/junitTransformer.js';
+import { resolveTestKeys } from '../services/testResolver.js';
 import { cleanupFile } from '../middleware/upload.js';
 import { ValidationError, XrayApiError } from '../middleware/errorHandler.js';
+import { config } from '../config.js';
 
 /**
  * POST /sync
@@ -31,11 +33,9 @@ export async function syncResults(req, res, next) {
     // Read the XML content
     const xmlContent = fs.readFileSync(filePath, 'utf-8');
 
-    // Transform XML to include test_key properties
-    const transformedXml = transformJUnitXml(xmlContent);
-    const testKeys = getTestKeySummary(xmlContent);
-    
-    console.log(`[SyncController] Transformed XML with test keys: ${testKeys.join(', ')}`);
+    // Get original test keys
+    const originalKeys = getTestKeySummary(xmlContent);
+    console.log(`[SyncController] Original test identifiers: ${originalKeys.join(', ')}`);
 
     // Extract options from form fields
     const options = {
@@ -45,10 +45,48 @@ export async function syncResults(req, res, next) {
       testEnvironments: req.body.testEnvironments,
     };
 
-    console.log('[SyncController] Sync options:', options);
+    // Resolve test keys if Jira API is configured
+    let finalXml = xmlContent;
+    let resolvedTestPlanKey = options.testPlanKey;
+    
+    if (config.jira.email && config.jira.apiToken && options.projectKey) {
+      try {
+        console.log('[SyncController] Resolving test keys via Jira API...');
+        const resolution = await resolveTestKeys(xmlContent, options.projectKey);
+        
+        // Replace logical keys with actual Jira keys
+        finalXml = replaceTestKeys(xmlContent, resolution.keyMapping);
+        
+        // Use resolved test plan key if available
+        if (resolution.testPlanKey && !options.testPlanKey) {
+          resolvedTestPlanKey = resolution.testPlanKey;
+          console.log(`[SyncController] Auto-resolved Test Plan: ${resolvedTestPlanKey}`);
+        }
+        
+        console.log(`[SyncController] Key mapping:`, resolution.keyMapping);
+      } catch (error) {
+        console.warn(`[SyncController] Test key resolution failed: ${error.message}`);
+        console.warn('[SyncController] Falling back to direct import...');
+      }
+    } else {
+      console.log('[SyncController] Jira API not configured, using identifiers as-is');
+    }
+
+    // Transform XML to include test_key properties
+    const transformedXml = transformJUnitXml(finalXml);
+    const finalKeys = getTestKeySummary(finalXml);
+    console.log(`[SyncController] Final test keys: ${finalKeys.join(', ')}`);
+
+    // Update options with resolved test plan
+    const finalOptions = {
+      ...options,
+      testPlanKey: resolvedTestPlanKey
+    };
+
+    console.log('[SyncController] Sync options:', finalOptions);
 
     // Import to Xray with transformed XML
-    const result = await xrayService.importJUnitResults(transformedXml, options);
+    const result = await xrayService.importJUnitResults(transformedXml, finalOptions);
 
     // Clean up uploaded file
     cleanupFile(filePath);
@@ -56,7 +94,7 @@ export async function syncResults(req, res, next) {
     res.json({
       success: true,
       message: 'Test results synced to Xray successfully',
-      testKeysMapped: testKeys,
+      testKeysMapped: finalKeys,
       xray: {
         testExecKey: result.key,
         testExecId: result.id,

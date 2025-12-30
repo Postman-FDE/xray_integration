@@ -1,0 +1,388 @@
+{
+	"info": {
+		"_postman_id": "230289ec-32df-43b7-af95-33313d57e166",
+		"name": "TEST- AUTH TESTS",
+		"description": "Test collection for LoanFlow Service - Maps to Jira Xray Test Plan SJP-1.\n\nEach folder corresponds to a Jira Xray Test:\n- SJP-2: Change Order API Test\n- SJP-3: Cancel Loan API Test\n- SJP-4: Contract Review / CPC Rejected API Test\n- SJP-5: Submit Project Info API Test\n- SJP-6: Verify Project Info (TPO) API Test",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50921172",
+		"_collection_link": "https://acme-fin-demo-team.postman.co/workspace/loanflow-service-(goodleap)~15a123c4-6a87-4ae2-85e5-42ffd0e896ef/collection/50921172-230289ec-32df-43b7-af95-33313d57e166?action=share&source=collection_link&creator=50921172"
+	},
+	"item": [
+		{
+			"name": "AB-2 | Change Order API Test Copy",
+			"item": [
+				{
+					"name": "Setup - Create Loan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Loan created successfully', function() {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Loan has ACTIVE status', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.status).to.eql('ACTIVE');",
+									"});",
+									"",
+									"pm.test('Loan ID is generated', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.loanId).to.match(/^LOAN-[A-Z0-9]+$/);",
+									"    pm.collectionVariables.set('loanId', response.loanId);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 200000,\n  \"borrowerName\": \"Change Order Test User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/loans",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"loans"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Change Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Change order submitted successfully', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Loan amount is updated', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.amount).to.eql(250000);",
+									"});",
+									"",
+									"pm.test('Change order is recorded', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.changeOrders).to.be.an('array');",
+									"    pm.expect(response.changeOrders.length).to.be.greaterThan(0);",
+									"});",
+									"",
+									"pm.test('Last change order timestamp is set', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.lastChangeOrderAt).to.be.a('string');",
+									"});",
+									"",
+									"pm.test('Change order contains previous and new amount', function() {",
+									"    const response = pm.response.json();",
+									"    const lastOrder = response.changeOrders[response.changeOrders.length - 1];",
+									"    pm.expect(lastOrder.previousAmount).to.eql(200000);",
+									"    pm.expect(lastOrder.newAmount).to.eql(250000);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newAmount\": 250000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/loans/{{loanId}}/change-order",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"loans",
+								"{{loanId}}",
+								"change-order"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify - Get Updated Loan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Loan retrieved successfully', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Loan reflects updated amount', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.amount).to.eql(250000);",
+									"});",
+									"",
+									"pm.test('Loan status remains ACTIVE', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.status).to.eql('ACTIVE');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/loans/{{loanId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"loans",
+								"{{loanId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Tests the change order workflow for modifying loan amounts.\n\nJira Test: SJP-2"
+		},
+		{
+			"name": "AB-3 | Security",
+			"item": [
+				{
+					"name": "Setup - Create Loan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Loan created successfully', function() {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Loan has ACTIVE status', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.status).to.eql('ACTIVE');",
+									"});",
+									"",
+									"pm.test('Loan ID is generated', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.loanId).to.match(/^LOAN-[A-Z0-9]+$/);",
+									"    pm.collectionVariables.set('loanId', response.loanId);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {},
+								"requests": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 200000,\n  \"borrowerName\": \"Change Order Test User\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/loans",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"loans"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Change Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Change order submitted successfully', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Loan amount is updated', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.amount).to.eql(250000);",
+									"});",
+									"",
+									"pm.test('Change order is recorded', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.changeOrders).to.be.an('array');",
+									"    pm.expect(response.changeOrders.length).to.be.greaterThan(0);",
+									"});",
+									"",
+									"pm.test('Last change order timestamp is set', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.lastChangeOrderAt).to.be.a('string');",
+									"});",
+									"",
+									"pm.test('Change order contains previous and new amount', function() {",
+									"    const response = pm.response.json();",
+									"    const lastOrder = response.changeOrders[response.changeOrders.length - 1];",
+									"    pm.expect(lastOrder.previousAmount).to.eql(200000);",
+									"    pm.expect(lastOrder.newAmount).to.eql(250000);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"newAmount\": 250000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/loans/{{loanId}}/change-order",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"loans",
+								"{{loanId}}",
+								"change-order"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify - Get Updated Loan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Loan retrieved successfully', function() {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Loan reflects updated amount', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.amount).to.eql(250000);",
+									"});",
+									"",
+									"pm.test('Loan status remains ACTIVE', function() {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.status).to.eql('ACTIVE');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/loans/{{loanId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"loans",
+								"{{loanId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Tests the change order workflow for modifying loan amounts.\n\nJira Test: SJP-2"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					"console.log(\"DONE\")"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000"
+		},
+		{
+			"key": "loanId",
+			"value": "LOAN-AA4E0FE6"
+		},
+		{
+			"key": "loanIdForCancel",
+			"value": "LOAN-522C4185"
+		},
+		{
+			"key": "loanIdForReject",
+			"value": "LOAN-88D0B905"
+		},
+		{
+			"key": "projectId",
+			"value": "PROJ-3AFC5AAB"
+		},
+		{
+			"key": "test-plan-id",
+			"value": "SJP-1"
+		}
+	]
+}
