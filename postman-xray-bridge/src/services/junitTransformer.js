@@ -39,8 +39,27 @@ export function transformJUnitXml(xmlContent) {
         return match;
       }
       
-      // Transform self-closing testcases: <testcase ... />
-      const transformedContent = content.replace(
+      // Transform testcases to include test_key property
+      let transformedContent = content;
+      
+      // First, handle testcases with content (failures, errors, etc.): <testcase ...>content</testcase>
+      transformedContent = transformedContent.replace(
+        /<testcase\s+([^>]*?)>([\s\S]*?)<\/testcase>/g,
+        (testcaseMatch, testcaseAttrs, testcaseContent) => {
+          // Skip if already has properties with test_key
+          if (testcaseContent.includes('property name="test_key"')) {
+            return testcaseMatch;
+          }
+          // Add test_key property at the beginning of content
+          return `<testcase ${testcaseAttrs}>
+      <properties>
+        <property name="test_key" value="${testKey}"/>
+      </properties>${testcaseContent}</testcase>`;
+        }
+      );
+      
+      // Then, handle self-closing testcases: <testcase ... />
+      transformedContent = transformedContent.replace(
         /<testcase\s+([^>]*?)\/>/g,
         (testcaseMatch, testcaseAttrs) => {
           return `<testcase ${testcaseAttrs}>
