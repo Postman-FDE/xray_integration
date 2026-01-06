@@ -21,16 +21,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const POSTMAN_API_BASE = 'https://api.getpostman.com';
 
+// Mock server for APIs that don't exist yet (collection runs)
+// TODO: Remove when real Postman API endpoints are available
+const POSTMAN_MOCK_BASE = process.env.POSTMAN_MOCK_URL || 'https://be57294f-23b9-486c-b932-bcaf691d852e.mock.pstmn.io';
+
 /**
  * Make authenticated request to Postman API
+ * @param {boolean} silent - If true, don't log the request
  */
-async function postmanFetch(endpoint) {
+async function postmanFetch(endpoint, { silent = false } = {}) {
   if (!config.postmanApiKey) {
     throw new Error('POSTMAN_API_KEY not configured');
   }
 
   const url = `${POSTMAN_API_BASE}${endpoint}`;
-  console.log(`[PostmanService] GET ${url}`);
+  // Only log if not silent
+  if (!silent) {
+    console.log(`  GET ${url}`);
+  }
 
   const response = await fetch(url, {
     headers: {
@@ -55,15 +63,10 @@ async function postmanFetch(endpoint) {
  * @returns {Promise<Array>} - List of collections (without variables)
  */
 export async function getCollections(workspaceId) {
-  console.log(`[PostmanService] Fetching collections for workspace ${workspaceId}`);
-  
-  const data = await postmanFetch(`/collections?workspace=${workspaceId}`);
+  const data = await postmanFetch(`/collections?workspace=${workspaceId}`, { silent: true });
   
   // API returns { collections: [...] }
-  const collections = data.collections || [];
-  console.log(`[PostmanService] Found ${collections.length} collections`);
-  
-  return collections;
+  return data.collections || [];
 }
 
 /**
@@ -75,9 +78,7 @@ export async function getCollections(workspaceId) {
  * @returns {Promise<Object>} - Collection details with variables
  */
 export async function getCollection(collectionUid) {
-  console.log(`[PostmanService] Fetching collection details: ${collectionUid}`);
-  
-  const data = await postmanFetch(`/collections/${collectionUid}`);
+  const data = await postmanFetch(`/collections/${collectionUid}`, { silent: true });
   
   // API returns { collection: { info: {...}, item: [...], variable: [...] } }
   const collection = data.collection || {};
@@ -101,7 +102,7 @@ export async function getCollectionsWithVariables(workspaceId) {
   const collections = await getCollections(workspaceId);
   
   // Step 2: Fetch each collection to get variables
-  console.log(`[PostmanService] Fetching details for ${collections.length} collections...`);
+  console.log(`Fetching details for ${collections.length} collections...`);
   
   const collectionsWithVars = await Promise.all(
     collections.map(async (c) => {
@@ -113,7 +114,7 @@ export async function getCollectionsWithVariables(workspaceId) {
           item: details.item
         };
       } catch (error) {
-        console.warn(`[PostmanService] Failed to fetch ${c.uid}: ${error.message}`);
+        console.warn(`  ⚠ Failed to fetch ${c.name || c.uid}`);
         return { ...c, variable: [], item: [] };
       }
     })
@@ -123,106 +124,112 @@ export async function getCollectionsWithVariables(workspaceId) {
 }
 
 // ============================================================================
-// MOCK: getCollectionRuns
-// This API does not exist yet. Replace with real API when available.
+// getCollectionRuns - Calls mock server (will be real API later)
 // ============================================================================
 /**
  * Get runs for a collection (paginated)
  * 
- * ⚠️ MOCK - API DOES NOT EXIST YET
+ * ⚠️ Currently calls mock server - will be replaced with real Postman API
  * 
- * Expected API: GET /collections/{uid}/runs?since={lastRunId}&limit=10
+ * Expected API: GET /collections/{uid}/runs
  * 
  * @param {string} collectionUid - Collection UID
  * @param {Object} options - Query options
- * @param {string} options.since - Fetch runs after this run ID
+ * @param {string} options.sinceTimestamp - ISO timestamp, fetch runs completed AFTER this time
  * @param {number} options.limit - Max runs to return
  * @returns {Promise<Object>} - { runs: [], nextCursor: null }
  */
 export async function getCollectionRuns(collectionUid, options = {}) {
-  const { since, limit = 10 } = options;
+  const { sinceTimestamp, limit = 10 } = options;
   
-  console.log(`[PostmanService] MOCK: Fetching runs for collection ${collectionUid} since=${since}`);
-  
-  // MOCK: Generate a new run with current timestamp
-  // This simulates a new collection run happening each time
-  const runId = `run-${Date.now()}`;
-  const mockRuns = [
-    {
-      id: runId,
-      collectionUid,
-      status: 'completed',
-      startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      source: 'manual'
+  try {
+    // Call mock endpoint (will be replaced with real API later)
+    const url = `${POSTMAN_MOCK_BASE}/collections/${collectionUid}/runs`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'x-api-key': config.postmanApiKey || '',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Mock API error: ${response.status} ${response.statusText}`);
     }
-  ];
-  
-  // Filter out runs we've already synced (if 'since' provided)
-  // Compare timestamps (IDs are like run-1734398400000)
-  const newRuns = since 
-    ? mockRuns.filter(r => {
-        const sinceTs = parseInt(since.replace('run-', ''), 10) || 0;
-        const runTs = parseInt(r.id.replace('run-', ''), 10) || 0;
-        return runTs > sinceTs;
-      })
-    : mockRuns;
-  
-  console.log(`[PostmanService] MOCK: Returning ${newRuns.length} runs (filtered from ${mockRuns.length})`);
-  
-  return {
-    runs: newRuns.slice(0, limit),
-    nextCursor: null // For pagination
-  };
+    
+    const data = await response.json();
+    
+    // Handle mock response format: { runs: [...] }
+    const allRuns = data.runs || [];
+    
+    // Filter runs by completedAt timestamp (if 'sinceTimestamp' provided)
+    // Only include runs that completed AFTER the given timestamp
+    const newRuns = sinceTimestamp 
+      ? allRuns.filter(r => {
+          const runCompletedAt = r.completedAt;
+          if (!runCompletedAt) return true; // Include if no timestamp (shouldn't happen)
+          return new Date(runCompletedAt) > new Date(sinceTimestamp);
+        })
+      : allRuns;
+    
+    return {
+      runs: newRuns.slice(0, limit),
+      allRunsCount: allRuns.length,
+      nextCursor: data.nextCursor || null
+    };
+  } catch (error) {
+    throw error;
+  }
 }
 
 // ============================================================================
-// MOCK: getRunResults
-// This API does not exist yet. Replace with real API when available.
-// Currently reads from: test-results/postman-cli/loanflow-results.json
+// getRunResults - Calls mock server (will be real API later)
 // ============================================================================
 /**
  * Get run results/details
  * 
- * ⚠️ MOCK - API DOES NOT EXIST YET
+ * ⚠️ Currently calls mock server - will be replaced with real Postman API
  * 
  * Expected API: GET /collections/{uid}/runs/{runId}
  * 
  * @param {string} collectionUid - Collection UID
  * @param {string} runId - Run ID
- * @returns {Promise<Object>} - Run results in JSON format (Postman CLI structure)
+ * @returns {Promise<Object>} - Run results in JSON format
  */
 export async function getRunResults(collectionUid, runId) {
-  console.log(`[PostmanService] MOCK: Fetching results for run ${runId}`);
-  
-  // MOCK: Read from actual Postman CLI JSON output
-  const mockFilePath = path.join(__dirname, '../../test-results/postman-cli/loanflow-results.json');
-  
   try {
-    const fileContent = fs.readFileSync(mockFilePath, 'utf-8');
-    const results = JSON.parse(fileContent);
+    // Call mock endpoint (will be replaced with real API later)
+    const url = `${POSTMAN_MOCK_BASE}/collections/${collectionUid}/runs/${runId}`;
     
-    // Add metadata that would come from the API
+    const response = await fetch(url, {
+      headers: {
+        'x-api-key': config.postmanApiKey || '',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Mock API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const results = await response.json();
+    
+    // Add runId if not present
     return {
       runId,
       collectionUid,
       ...results
     };
   } catch (error) {
-    console.warn(`[PostmanService] MOCK: Could not read ${mockFilePath}: ${error.message}`);
+    // Fallback to local file if mock fails
+    const mockFilePath = path.join(__dirname, '../../test-results/postman-cli/loanflow-results.json');
     
-    // Fallback to minimal mock
-    return {
-      runId,
-      collectionUid,
-      run: {
-        meta: {
-          collectionName: 'LoanFlow Tests (mock fallback)'
-        },
-        executions: [],
-        summary: { total: 0, passed: 0, failed: 0 }
-      }
-    };
+    try {
+      const fileContent = fs.readFileSync(mockFilePath, 'utf-8');
+      const results = JSON.parse(fileContent);
+      console.log(`      (using local fallback file)`);
+      return { runId, collectionUid, ...results };
+    } catch (fileError) {
+      throw error; // Throw original error
+    }
   }
 }
 
@@ -259,11 +266,8 @@ export function buildFolderMap(collection) {
   const folderMap = {};
   
   if (!collection.item || !Array.isArray(collection.item)) {
-    console.log('[buildFolderMap] No items found in collection');
     return folderMap;
   }
-  
-  console.log(`[buildFolderMap] Processing ${collection.item.length} top-level items`);
   
   // Iterate through folders (top-level items that have nested items)
   for (const folder of collection.item) {
@@ -278,8 +282,6 @@ export function buildFolderMap(collection) {
       }
     }
   }
-  
-  console.log(`[buildFolderMap] Mapped ${Object.keys(folderMap).length} requests to folders`);
   
   return folderMap;
 }

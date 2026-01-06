@@ -33,8 +33,7 @@ function loadState() {
   }
   
   return {
-    collections: {},
-    lastRun: null
+    collections: {}
   };
 }
 
@@ -52,35 +51,41 @@ function saveState(state) {
 }
 
 /**
- * Get last synced run ID for a collection
+ * Get last synced run timestamp for a collection
  * @param {string} collectionUid - Collection UID
- * @returns {string|null} - Last synced run ID or null
+ * @returns {string|null} - ISO timestamp of last synced run, or null
  */
-export function getLastSyncedRunId(collectionUid) {
+export function getLastSyncedTimestamp(collectionUid) {
   const state = loadState();
-  return state.collections[collectionUid]?.lastRunId || null;
+  return state.collections[collectionUid]?.lastRunTimestamp || null;
 }
 
 /**
- * Update last synced run ID for a collection
+ * Update last synced run info for a collection
  * @param {string} collectionUid - Collection UID
  * @param {string} runId - Run ID that was synced
+ * @param {string} runTimestamp - The run's completed timestamp (meta.completed)
  * @param {Object} metadata - Additional metadata
  */
-export function updateLastSyncedRunId(collectionUid, runId, metadata = {}) {
+export function updateLastSynced(collectionUid, runId, runTimestamp, metadata = {}) {
   const state = loadState();
   
   state.collections[collectionUid] = {
     lastRunId: runId,
-    lastSyncedAt: new Date().toISOString(),
+    lastRunTimestamp: runTimestamp,  // The run's completed timestamp - used for filtering
+    lastSyncedAt: new Date().toISOString(),  // When we synced it (metadata only)
     testPlanId: metadata.testPlanId || state.collections[collectionUid]?.testPlanId,
     collectionName: metadata.collectionName || state.collections[collectionUid]?.collectionName
   };
   
-  state.lastRun = new Date().toISOString();
-  
   saveState(state);
-  console.log(`[SyncState] Updated ${collectionUid} → lastRunId: ${runId}`);
+}
+
+// Keep old function for backwards compatibility, but mark deprecated
+/** @deprecated Use getLastSyncedTimestamp instead */
+export function getLastSyncedRunId(collectionUid) {
+  const state = loadState();
+  return state.collections[collectionUid]?.lastRunId || null;
 }
 
 /**
@@ -95,7 +100,10 @@ export function getFullState() {
  * Reset all sync state
  */
 export function resetState() {
-  saveState({ collections: {}, lastRun: null });
+  saveState({ collections: {} });
   console.log('[SyncState] Reset all state');
 }
+
+// Alias for resetState
+export const resetAllState = resetState;
 

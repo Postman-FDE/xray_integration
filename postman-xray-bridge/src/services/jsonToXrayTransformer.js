@@ -1,22 +1,25 @@
 /**
  * JSON to Xray JSON Transformer
  * 
- * Converts Postman CLI JSON results to Xray JSON format.
- * This is the native Xray format with more control over test execution details.
+ * Converts Postman collection run results to Xray JSON format.
+ * Supports both:
+ *   - Raw CLI format: { run: { meta, executions } }
+ *   - Clean API format: { meta, executions }
  */
 
 /**
- * Transform Postman CLI JSON results to Xray JSON format
+ * Transform Postman collection run results to Xray JSON format
  * 
- * @param {Object} results - Postman CLI JSON results
+ * @param {Object} results - Collection run results (CLI or API format)
  * @param {Object} folderMap - Map of request ID to folder name (contains test_key like "SJP-2 | ...")
  * @param {Object} options - Additional options
  * @param {string} options.testPlanKey - Test plan key (e.g., "SJP-1")
  * @returns {Object} - Xray JSON import payload
  */
 export function transformToXrayJson(results, folderMap = {}, options = {}) {
-  const executions = results.run?.executions || [];
-  const meta = results.run?.meta || {};
+  // Support both CLI format (results.run.executions) and API format (results.executions)
+  const executions = results.run?.executions || results.executions || [];
+  const meta = results.run?.meta || results.meta || {};
   
   // Group executions by folder (test)
   const testResults = groupByTest(executions, folderMap);
@@ -39,15 +42,17 @@ export function transformToXrayJson(results, folderMap = {}, options = {}) {
 
 /**
  * Group executions by test (folder) and determine overall status
+ * Supports both CLI format and clean API format
  */
 function groupByTest(executions, folderMap) {
   const grouped = {};
   
   for (const exec of executions) {
-    const requestId = exec.requestExecuted?.id;
-    const requestName = exec.requestExecuted?.name || 'Unknown Request';
+    // Support both CLI format (exec.requestExecuted.id) and API format (exec.requestId)
+    const requestId = exec.requestExecuted?.id || exec.requestId;
+    const requestName = exec.requestExecuted?.name || exec.requestName || 'Unknown Request';
     const tests = exec.tests || [];
-    const responseTime = exec.response?.responseTime || 0;
+    const responseTime = exec.response?.responseTime || exec.responseTime || 0;
     
     // Get folder name from map
     const folderName = folderMap[requestId] || 'Ungrouped';
@@ -66,11 +71,16 @@ function groupByTest(executions, folderMap) {
     
     // Add assertions from this request
     for (const test of tests) {
+      // Normalize error: API format uses string, CLI format uses { message: string }
+      const errorMessage = typeof test.error === 'string' 
+        ? test.error 
+        : test.error?.message || null;
+      
       grouped[testKey].assertions.push({
         requestName,
         assertionName: test.name,
         status: test.status,
-        error: test.error
+        error: errorMessage ? { message: errorMessage } : null
       });
     }
     

@@ -35,6 +35,7 @@ export const config = {
   sync: {
     enabled: process.env.SYNC_ENABLED === 'true',
     cronExpression: process.env.SYNC_CRON || '0 * * * *', // Every hour
+    dryRun: process.env.DRY_RUN === 'true', // If true, transform but don't push to Xray or update state
   },
 
   // Server settings
