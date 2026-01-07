@@ -1,7 +1,7 @@
 /**
  * Sync State Storage
  * 
- * Tracks the last synced run ID for each collection.
+ * Tracks the last synced run for each collection using timestamps.
  * Uses a simple JSON file for persistence.
  */
 
@@ -51,9 +51,10 @@ function saveState(state) {
 }
 
 /**
- * Get last synced run timestamp for a collection
+ * Get last synced timestamp for a collection
+ * This is the completedAt timestamp of the last synced run, used for filtering new runs.
  * @param {string} collectionUid - Collection UID
- * @returns {string|null} - ISO timestamp of last synced run, or null
+ * @returns {string|null} - Last synced run timestamp (ISO string) or null
  */
 export function getLastSyncedTimestamp(collectionUid) {
   const state = loadState();
@@ -61,10 +62,10 @@ export function getLastSyncedTimestamp(collectionUid) {
 }
 
 /**
- * Update last synced run info for a collection
+ * Update last synced state for a collection
  * @param {string} collectionUid - Collection UID
  * @param {string} runId - Run ID that was synced
- * @param {string} runTimestamp - The run's completed timestamp (meta.completed)
+ * @param {string} runTimestamp - The run's completedAt timestamp (used for filtering)
  * @param {Object} metadata - Additional metadata
  */
 export function updateLastSynced(collectionUid, runId, runTimestamp, metadata = {}) {
@@ -79,13 +80,7 @@ export function updateLastSynced(collectionUid, runId, runTimestamp, metadata = 
   };
   
   saveState(state);
-}
-
-// Keep old function for backwards compatibility, but mark deprecated
-/** @deprecated Use getLastSyncedTimestamp instead */
-export function getLastSyncedRunId(collectionUid) {
-  const state = loadState();
-  return state.collections[collectionUid]?.lastRunId || null;
+  console.log(`[SyncState] Updated ${collectionUid} → lastRunTimestamp: ${runTimestamp}`);
 }
 
 /**
@@ -103,7 +98,3 @@ export function resetState() {
   saveState({ collections: {} });
   console.log('[SyncState] Reset all state');
 }
-
-// Alias for resetState
-export const resetAllState = resetState;
-

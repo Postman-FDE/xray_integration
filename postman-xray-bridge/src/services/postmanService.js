@@ -27,18 +27,13 @@ const POSTMAN_MOCK_BASE = process.env.POSTMAN_MOCK_URL || 'https://be57294f-23b9
 
 /**
  * Make authenticated request to Postman API
- * @param {boolean} silent - If true, don't log the request
  */
-async function postmanFetch(endpoint, { silent = false } = {}) {
+async function postmanFetch(endpoint) {
   if (!config.postmanApiKey) {
     throw new Error('POSTMAN_API_KEY not configured');
   }
 
   const url = `${POSTMAN_API_BASE}${endpoint}`;
-  // Only log if not silent
-  if (!silent) {
-    console.log(`  GET ${url}`);
-  }
 
   const response = await fetch(url, {
     headers: {
@@ -63,9 +58,7 @@ async function postmanFetch(endpoint, { silent = false } = {}) {
  * @returns {Promise<Array>} - List of collections (without variables)
  */
 export async function getCollections(workspaceId) {
-  const data = await postmanFetch(`/collections?workspace=${workspaceId}`, { silent: true });
-  
-  // API returns { collections: [...] }
+  const data = await postmanFetch(`/collections?workspace=${workspaceId}`);
   return data.collections || [];
 }
 
@@ -78,9 +71,7 @@ export async function getCollections(workspaceId) {
  * @returns {Promise<Object>} - Collection details with variables
  */
 export async function getCollection(collectionUid) {
-  const data = await postmanFetch(`/collections/${collectionUid}`, { silent: true });
-  
-  // API returns { collection: { info: {...}, item: [...], variable: [...] } }
+  const data = await postmanFetch(`/collections/${collectionUid}`);
   const collection = data.collection || {};
   
   return {
@@ -98,10 +89,7 @@ export async function getCollection(collectionUid) {
  * @returns {Promise<Array>} - Collections with variables populated
  */
 export async function getCollectionsWithVariables(workspaceId) {
-  // Step 1: Get list of collections (no variables in this response)
   const collections = await getCollections(workspaceId);
-  
-  // Step 2: Fetch each collection to get variables
   console.log(`Fetching details for ${collections.length} collections...`);
   
   const collectionsWithVars = await Promise.all(
@@ -124,20 +112,21 @@ export async function getCollectionsWithVariables(workspaceId) {
 }
 
 // ============================================================================
-// getCollectionRuns - Calls mock server (will be real API later)
+// MOCK: getCollectionRuns
+// This API does not exist yet. Replace with real API when available.
 // ============================================================================
 /**
  * Get runs for a collection (paginated)
  * 
- * ⚠️ Currently calls mock server - will be replaced with real Postman API
+ * ⚠️ MOCK - API DOES NOT EXIST YET
  * 
  * Expected API: GET /collections/{uid}/runs
  * 
  * @param {string} collectionUid - Collection UID
  * @param {Object} options - Query options
- * @param {string} options.sinceTimestamp - ISO timestamp, fetch runs completed AFTER this time
+ * @param {string} options.sinceTimestamp - Fetch runs completed after this timestamp
  * @param {number} options.limit - Max runs to return
- * @returns {Promise<Object>} - { runs: [], nextCursor: null }
+ * @returns {Promise<Object>} - { runs: [], allRunsCount: number }
  */
 export async function getCollectionRuns(collectionUid, options = {}) {
   const { sinceTimestamp, limit = 10 } = options;
@@ -161,22 +150,21 @@ export async function getCollectionRuns(collectionUid, options = {}) {
     // Handle mock response format: { runs: [...] }
     const allRuns = data.runs || [];
     
-    // Filter runs by completedAt timestamp (if 'sinceTimestamp' provided)
-    // Only include runs that completed AFTER the given timestamp
+    // Filter runs by timestamp (only runs completed AFTER the sinceTimestamp)
     const newRuns = sinceTimestamp 
       ? allRuns.filter(r => {
           const runCompletedAt = r.completedAt;
-          if (!runCompletedAt) return true; // Include if no timestamp (shouldn't happen)
+          if (!runCompletedAt) return true; // Include if no timestamp
           return new Date(runCompletedAt) > new Date(sinceTimestamp);
         })
       : allRuns;
     
     return {
       runs: newRuns.slice(0, limit),
-      allRunsCount: allRuns.length,
-      nextCursor: data.nextCursor || null
+      allRunsCount: allRuns.length
     };
   } catch (error) {
+    console.error(`[PostmanService] Error fetching runs: ${error.message}`);
     throw error;
   }
 }
@@ -197,7 +185,6 @@ export async function getCollectionRuns(collectionUid, options = {}) {
  */
 export async function getRunResults(collectionUid, runId) {
   try {
-    // Call mock endpoint (will be replaced with real API later)
     const url = `${POSTMAN_MOCK_BASE}/collections/${collectionUid}/runs/${runId}`;
     
     const response = await fetch(url, {
@@ -212,7 +199,6 @@ export async function getRunResults(collectionUid, runId) {
     
     const results = await response.json();
     
-    // Add runId if not present
     return {
       runId,
       collectionUid,
@@ -220,12 +206,11 @@ export async function getRunResults(collectionUid, runId) {
     };
   } catch (error) {
     // Fallback to local file if mock fails
-    const mockFilePath = path.join(__dirname, '../../test-results/postman-cli/loanflow-results.json');
+    const mockFilePath = path.join(__dirname, '../../test-results/raw-test-results/postman-cli/loanflow-results.json');
     
     try {
       const fileContent = fs.readFileSync(mockFilePath, 'utf-8');
       const results = JSON.parse(fileContent);
-      console.log(`      (using local fallback file)`);
       return { runId, collectionUid, ...results };
     } catch (fileError) {
       throw error; // Throw original error
@@ -266,8 +251,11 @@ export function buildFolderMap(collection) {
   const folderMap = {};
   
   if (!collection.item || !Array.isArray(collection.item)) {
+    console.log('[buildFolderMap] No items found in collection');
     return folderMap;
   }
+  
+  console.log(`[buildFolderMap] Processing ${collection.item.length} top-level items`);
   
   // Iterate through folders (top-level items that have nested items)
   for (const folder of collection.item) {
@@ -282,6 +270,8 @@ export function buildFolderMap(collection) {
       }
     }
   }
+  
+  console.log(`[buildFolderMap] Mapped ${Object.keys(folderMap).length} requests to folders`);
   
   return folderMap;
 }

@@ -2,7 +2,6 @@
  * Sync Job
  * 
  * Periodically fetches new collection runs from Postman and syncs to Xray.
- * Runs every hour (configurable).
  */
 
 import * as postmanService from '../services/postmanService.js';
@@ -10,8 +9,6 @@ import * as syncState from '../store/syncState.js';
 import * as xrayService from '../services/xrayService.js';
 import { transformToXrayJson } from '../services/jsonToXrayTransformer.js';
 import config from '../config.js';
-// Keep JUnit transformer available if needed:
-// import { transformToJUnitXml } from '../services/jsonToJunitTransformer.js';
 
 /**
  * Main sync job - runs periodically
@@ -71,9 +68,6 @@ export async function runSyncJob(workspaceId) {
 
 /**
  * Sync a single collection's new runs
- * @param {Object} collection - Collection object
- * @param {boolean} isDryRun - If true, push to Xray but don't update sync-state.json
- * @returns {Object} - Sync result
  */
 async function syncCollection(collection, isDryRun = false) {
   const { uid, name } = collection;
@@ -116,7 +110,7 @@ async function syncCollection(collection, isDryRun = false) {
       // Fetch full run results
       console.log(`      Fetching run results...`);
       const results = await postmanService.getRunResults(uid, run.id);
-      const executions = results.run?.executions || [];
+      const executions = results.run?.executions || results.executions || [];
       console.log(`      Got ${executions.length} executions`);
       
       // Transform JSON to Xray JSON format
@@ -174,5 +168,3 @@ async function syncCollection(collection, isDryRun = false) {
     runs: syncedRuns
   };
 }
-
-

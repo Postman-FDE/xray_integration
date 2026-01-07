@@ -7,6 +7,8 @@
  *   - Clean API format: { meta, executions }
  */
 
+import { Buffer } from 'buffer';
+
 /**
  * Transform Postman collection run results to Xray JSON format
  * 
@@ -24,12 +26,26 @@ export function transformToXrayJson(results, folderMap = {}, options = {}) {
   // Group executions by folder (test)
   const testResults = groupByTest(executions, folderMap);
   
+  // Extract project key from testPlanKey (e.g., "SJP-1" → "SJP")
+  const projectKey = options.testPlanKey ? options.testPlanKey.split('-')[0] : undefined;
+  
+  // Build rich description with trigger source, run URL, and duration
+  let description = `**Trigger:** ${meta.triggerSource || 'N/A'}`;
+  if (meta.runUrl) {
+    description += `\n**Postman Run:** [View Details](${meta.runUrl})`;
+  }
+  if (meta.duration) {
+    description += `\n**Duration:** ${meta.duration}ms`;
+  }
+  description += `\n\nAutomated test execution synced from Postman`;
+
   // Build Xray JSON payload
   const payload = {
     testExecutionKey: options.testExecutionKey || undefined,
     info: {
-      summary: `${meta.collectionName || 'Postman Collection'} - ${new Date().toISOString()}`,
-      description: `Automated test execution from Postman CLI`,
+      project: projectKey,
+      summary: `${meta.collectionName || 'Postman Collection'} - ${new Date(meta.started || Date.now()).toISOString().split('T')[0]}`,
+      description: description,
       startDate: meta.started ? new Date(meta.started).toISOString() : new Date().toISOString(),
       finishDate: meta.completed ? new Date(meta.completed).toISOString() : new Date().toISOString(),
       testPlanKey: options.testPlanKey
@@ -94,21 +110,17 @@ function groupByTest(executions, folderMap) {
     
     const status = hasFailed ? 'FAILED' : allPassed ? 'PASSED' : 'PASSED';
     
-    // Build comment with assertion details
+    // Build comment with assertion summary and failure details
     const comment = buildComment(test.assertions);
     
-    // Build steps from assertions
-    const steps = test.assertions.map((a, index) => ({
-      status: a.status === 'passed' ? 'PASSED' : 'FAILED',
-      comment: a.error ? `${a.assertionName}: ${a.error.message}` : a.assertionName,
-      actualResult: a.status === 'passed' ? 'Passed' : (a.error?.message || 'Failed')
-    }));
+    // Build evidences with detailed assertion results as JSON attachment
+    const evidences = buildEvidences(test);
     
     return {
       testKey: test.testKey,
       status,
       comment,
-      steps: steps.length > 0 ? steps : undefined
+      evidences
     };
   });
 }
@@ -123,21 +135,22 @@ function extractTestKey(folderName) {
 
 /**
  * Build a comment summarizing the test results
+ * Includes detailed failure messages for failing tests
  */
 function buildComment(assertions) {
   const passed = assertions.filter(a => a.status === 'passed').length;
   const failed = assertions.filter(a => a.status === 'failed').length;
   const total = assertions.length;
   
-  let comment = `**Results:** ${passed}/${total} assertions passed`;
+  let comment = `**${passed}/${total}** assertions passed`;
   
   if (failed > 0) {
     comment += `\n\n**Failures:**\n`;
     const failures = assertions.filter(a => a.status === 'failed');
     for (const f of failures) {
-      comment += `- ${f.requestName}: ${f.assertionName}`;
+      comment += `• ${f.requestName}: ${f.assertionName}`;
       if (f.error?.message) {
-        comment += ` - ${f.error.message}`;
+        comment += `\n  → ${f.error.message}`;
       }
       comment += '\n';
     }
@@ -146,3 +159,31 @@ function buildComment(assertions) {
   return comment;
 }
 
+/**
+ * Build evidences array with detailed assertion results as a JSON attachment
+ */
+function buildEvidences(test) {
+  const evidenceContent = {
+    testKey: test.testKey,
+    folder: test.folderName,
+    summary: {
+      passed: test.assertions.filter(a => a.status === 'passed').length,
+      failed: test.assertions.filter(a => a.status === 'failed').length,
+      total: test.assertions.length,
+    },
+    assertions: test.assertions.map(a => ({
+      request: a.requestName,
+      assertion: a.assertionName,
+      status: a.status.toUpperCase(),
+      error: a.error?.message || undefined,
+    })),
+  };
+
+  const base64Data = Buffer.from(JSON.stringify(evidenceContent, null, 2)).toString('base64');
+
+  return [{
+    data: base64Data,
+    filename: `${test.testKey}-assertions.json`,
+    contentType: 'application/json'
+  }];
+}

@@ -35,8 +35,11 @@ export const config = {
   sync: {
     enabled: process.env.SYNC_ENABLED === 'true',
     cronExpression: process.env.SYNC_CRON || '0 * * * *', // Every hour
-    dryRun: process.env.DRY_RUN === 'true', // If true, transform but don't push to Xray or update state
+    dryRun: process.env.DRY_RUN === 'true', // Push to Xray but don't update sync state
   },
+  
+  // Postman Mock URL (for testing with mock API)
+  postmanMockUrl: process.env.POSTMAN_MOCK_URL || null,
 
   // Server settings
   server: {

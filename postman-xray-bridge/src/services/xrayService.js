@@ -88,7 +88,8 @@ export async function importJUnitResults(xmlContent, options = {}) {
     throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  return result;
 }
 
 /**
@@ -117,7 +118,8 @@ export async function importXrayJson(payload) {
     throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  return result;
 }
 
 /**

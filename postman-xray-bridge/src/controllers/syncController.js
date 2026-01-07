@@ -26,7 +26,6 @@ export async function syncResults(req, res, next) {
     }
 
     filePath = req.file.path;
-    console.log(`[SyncController] Received file: ${req.file.originalname} (${req.file.size} bytes)`);
 
     // Read the XML content
     const xmlContent = fs.readFileSync(filePath, 'utf-8');
@@ -34,8 +33,6 @@ export async function syncResults(req, res, next) {
     // Transform XML to include test_key properties
     const transformedXml = transformJUnitXml(xmlContent);
     const testKeys = getTestKeySummary(xmlContent);
-    
-    console.log(`[SyncController] Transformed XML with test keys: ${testKeys.join(', ')}`);
 
     // Extract options from form fields
     const options = {
@@ -44,8 +41,6 @@ export async function syncResults(req, res, next) {
       testExecKey: req.body.testExecKey,
       testEnvironments: req.body.testEnvironments,
     };
-
-    console.log('[SyncController] Sync options:', options);
 
     // Import to Xray with transformed XML
     const result = await xrayService.importJUnitResults(transformedXml, options);
@@ -97,8 +92,6 @@ export async function syncResultsRaw(req, res, next) {
       testExecKey: req.query.testExecKey,
       testEnvironments: req.query.testEnvironments,
     };
-
-    console.log('[SyncController] Raw sync options:', options);
 
     // Import to Xray
     const result = await xrayService.importJUnitResults(xmlContent, options);

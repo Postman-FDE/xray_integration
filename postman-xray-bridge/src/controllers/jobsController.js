@@ -26,8 +26,6 @@ export async function runSync(req, res, next) {
       });
     }
     
-    console.log(`[JobsController] Manual sync triggered for ${workspaceIds.length} workspace(s): ${workspaceIds.join(', ')}`);
-    
     const result = await scheduler.runNow(workspaceIds);
     
     res.json({
