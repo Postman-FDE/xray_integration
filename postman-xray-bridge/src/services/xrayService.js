@@ -22,8 +22,6 @@ export async function authenticate() {
     throw new Error('Xray credentials not configured. Set XRAY_CLIENT_ID and XRAY_CLIENT_SECRET.');
   }
 
-  console.log('[XrayService] Authenticating with Xray Cloud...');
-
   const response = await fetch(`${baseUrl}/api/v2/authenticate`, {
     method: 'POST',
     headers: {
@@ -47,7 +45,6 @@ export async function authenticate() {
   // Token is valid for ~1 hour, set expiry to 55 minutes from now
   tokenExpiry = Date.now() + 55 * 60 * 1000;
 
-  console.log('[XrayService] Authentication successful');
   return authToken;
 }
 
@@ -77,8 +74,6 @@ export async function importJUnitResults(xmlContent, options = {}) {
   const queryString = params.toString();
   const url = `${baseUrl}/api/v2/import/execution/junit${queryString ? `?${queryString}` : ''}`;
 
-  console.log(`[XrayService] Importing JUnit results to: ${url}`);
-
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -94,8 +89,36 @@ export async function importJUnitResults(xmlContent, options = {}) {
   }
 
   const result = await response.json();
-  console.log('[XrayService] Import successful:', result);
+  return result;
+}
 
+/**
+ * Import Xray JSON results to Xray
+ * 
+ * @param {object} payload - The Xray JSON payload
+ * @returns {object} - Import result with test execution key
+ */
+export async function importXrayJson(payload) {
+  const token = await authenticate();
+  const { baseUrl } = config.xray;
+
+  const url = `${baseUrl}/api/v2/import/execution`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
   return result;
 }
 

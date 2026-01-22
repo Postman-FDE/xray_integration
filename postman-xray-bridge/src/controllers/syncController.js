@@ -28,7 +28,6 @@ export async function syncResults(req, res, next) {
     }
 
     filePath = req.file.path;
-    console.log(`[SyncController] Received file: ${req.file.originalname} (${req.file.size} bytes)`);
 
     // Read the XML content
     const xmlContent = fs.readFileSync(filePath, 'utf-8');
@@ -135,8 +134,6 @@ export async function syncResultsRaw(req, res, next) {
       testExecKey: req.query.testExecKey,
       testEnvironments: req.query.testEnvironments,
     };
-
-    console.log('[SyncController] Raw sync options:', options);
 
     // Import to Xray
     const result = await xrayService.importJUnitResults(xmlContent, options);

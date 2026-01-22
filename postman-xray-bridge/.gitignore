@@ -9,6 +9,12 @@ node_modules/
 # Uploaded files
 uploads/
 
+# Test results (generated)
+test-results/
+
+# Sync state data
+data/
+
 # Logs
 logs/
 *.log

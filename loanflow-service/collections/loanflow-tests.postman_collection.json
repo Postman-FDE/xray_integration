@@ -44,7 +44,7 @@
               "script": {
                 "exec": [
                   "pm.test('Loan created successfully', function() {",
-                  "    pm.response.to.have.status(200);",
+                  "    pm.response.to.have.status(201);",
                   "});",
                   "",
                   "pm.test('Loan has ACTIVE status', function() {",
