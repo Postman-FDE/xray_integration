@@ -39,8 +39,27 @@ export function transformJUnitXml(xmlContent) {
         return match;
       }
       
-      // Transform self-closing testcases: <testcase ... />
-      const transformedContent = content.replace(
+      // Transform testcases to include test_key property
+      let transformedContent = content;
+      
+      // First, handle testcases with content (failures, errors, etc.): <testcase ...>content</testcase>
+      transformedContent = transformedContent.replace(
+        /<testcase\s+([^>]*?)>([\s\S]*?)<\/testcase>/g,
+        (testcaseMatch, testcaseAttrs, testcaseContent) => {
+          // Skip if already has properties with test_key
+          if (testcaseContent.includes('property name="test_key"')) {
+            return testcaseMatch;
+          }
+          // Add test_key property at the beginning of content
+          return `<testcase ${testcaseAttrs}>
+      <properties>
+        <property name="test_key" value="${testKey}"/>
+      </properties>${testcaseContent}</testcase>`;
+        }
+      );
+      
+      // Then, handle self-closing testcases: <testcase ... />
+      transformedContent = transformedContent.replace(
         /<testcase\s+([^>]*?)\/>/g,
         (testcaseMatch, testcaseAttrs) => {
           return `<testcase ${testcaseAttrs}>
@@ -74,5 +93,32 @@ export function getTestKeySummary(xmlContent) {
   }
   
   return Array.from(testKeys).sort();
+}
+
+/**
+ * Replace test identifiers in XML with actual Jira keys
+ * @param {string} xmlContent - Original XML
+ * @param {Object} keyMapping - Map of identifier → actual key (e.g., {'SJP-2': 'PF-11'})
+ * @returns {string} - XML with replaced keys
+ */
+export function replaceTestKeys(xmlContent, keyMapping) {
+  if (!keyMapping || Object.keys(keyMapping).length === 0) {
+    return xmlContent;
+  }
+  
+  let updatedXml = xmlContent;
+  
+  // Replace each identifier with actual key
+  for (const [identifier, actualKey] of Object.entries(keyMapping)) {
+    // Replace in testsuite names
+    const regex = new RegExp(`(<testsuite\\s+name=")(${identifier})([^"]*")`, 'g');
+    updatedXml = updatedXml.replace(regex, `$1${actualKey}$3`);
+    
+    // Replace in test_key properties
+    const propRegex = new RegExp(`(property name="test_key" value=")(${identifier})(")`, 'g');
+    updatedXml = updatedXml.replace(propRegex, `$1${actualKey}$3`);
+  }
+  
+  return updatedXml;
 }
 
