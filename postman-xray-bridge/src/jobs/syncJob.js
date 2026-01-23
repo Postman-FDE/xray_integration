@@ -23,8 +23,11 @@ export async function runSyncJob(workspaceId) {
   console.log(`Workspace: ${workspaceId}`);
   console.log(`Time: ${new Date().toISOString()}`);
   if (isDryRun) {
-    console.log('Mode: ⚠️  DRY RUN (Xray updated, sync-state.json NOT updated)');
+    console.log('Mode: ⚠️  DRY RUN (pushes to Xray, but no DB updates)');
   }
+
+  // Create sync job record (skip in dry run)
+  const jobId = isDryRun ? null : await syncState.createSyncJob();
 
   try {
     // Step 1: Fetch all collections in workspace
@@ -37,7 +40,8 @@ export async function runSyncJob(workspaceId) {
 
     if (linkedCollections.length === 0) {
       console.log('No Xray-linked collections to sync. Done.');
-      return { synced: 0, collections: [] };
+      if (jobId) await syncState.completeSyncJob(jobId, 'success');
+      return { synced: 0, collections: [], jobId };
     }
 
     // Step 2: Process each collection
@@ -45,23 +49,44 @@ export async function runSyncJob(workspaceId) {
     const results = [];
     
     for (const collection of linkedCollections) {
-      const collectionResult = await syncCollection(collection, isDryRun);
+      const collectionResult = await syncCollection(collection, isDryRun, jobId);
       results.push(collectionResult);
     }
 
     // Summary
     const totalSynced = results.reduce((sum, r) => sum + r.runsSynced, 0);
+    const totalFailed = results.reduce((sum, r) => r.runs.filter(run => run.status === 'error').length, 0);
+    
+    // Determine job status and complete (skip in dry run)
+    if (jobId) {
+      let jobStatus = 'success';
+      if (totalFailed > 0 && totalSynced > 0) {
+        jobStatus = 'partial';
+      } else if (totalFailed > 0 && totalSynced === 0) {
+        jobStatus = 'failed';
+      }
+      await syncState.completeSyncJob(jobId, jobStatus);
+    }
+    
     console.log('\n════════════════════════════════════════════════════════════════');
-    console.log(`✓ SYNC COMPLETE - ${totalSynced} run(s) synced`);
+    if (isDryRun) {
+      console.log(`✓ DRY RUN COMPLETE - ${totalSynced} run(s) would be synced`);
+    } else {
+      console.log(`✓ SYNC COMPLETE - ${totalSynced} run(s) synced, ${totalFailed} failed`);
+    }
     console.log('════════════════════════════════════════════════════════════════\n');
 
     return {
       synced: totalSynced,
-      collections: results
+      failed: totalFailed,
+      collections: results,
+      jobId,
+      dryRun: isDryRun
     };
 
   } catch (error) {
     console.error('\n✗ SYNC ERROR:', error.message);
+    if (jobId) await syncState.completeSyncJob(jobId, 'failed');
     throw error;
   }
 }
@@ -69,7 +94,7 @@ export async function runSyncJob(workspaceId) {
 /**
  * Sync a single collection's new runs
  */
-async function syncCollection(collection, isDryRun = false) {
+async function syncCollection(collection, isDryRun = false, jobId = null) {
   const { uid, name } = collection;
   const testPlanId = postmanService.getTestPlanId(collection);
   
@@ -78,7 +103,7 @@ async function syncCollection(collection, isDryRun = false) {
   console.log(`   Test Plan: ${testPlanId}`);
   
   // Get last synced timestamp (the completedAt of the last synced run)
-  const lastSyncedTimestamp = syncState.getLastSyncedTimestamp(uid);
+  const lastSyncedTimestamp = await syncState.getLastSyncedTimestamp(uid);
   console.log(`   Last synced: ${lastSyncedTimestamp || '(never)'}`);
   
   // Fetch new runs since last sync
@@ -129,7 +154,7 @@ async function syncCollection(collection, isDryRun = false) {
       const runCompletedAt = results.meta?.completed || results.run?.meta?.completed || run.completedAt;
       
       if (isDryRun) {
-        console.log(`      ⚠️  DRY RUN: Skipping state update`);
+        console.log(`      ⚠️  DRY RUN: Skipping DB update`);
         syncedRuns.push({
           runId: run.id,
           status: 'synced_dry_run',
@@ -137,10 +162,14 @@ async function syncCollection(collection, isDryRun = false) {
           xrayTestExecKey: xrayResult.key
         });
       } else {
-        syncState.updateLastSynced(uid, run.id, runCompletedAt, {
+        // Update sync state and record run
+        await syncState.updateLastSynced(uid, run.id, runCompletedAt, {
           testPlanId,
           collectionName: name
         });
+        if (jobId) {
+          await syncState.recordSyncRun(jobId, uid, run.id, 'success', xrayResult.key, null);
+        }
         console.log(`      State updated (lastRunTimestamp: ${runCompletedAt})`);
         syncedRuns.push({
           runId: run.id,
@@ -152,6 +181,10 @@ async function syncCollection(collection, isDryRun = false) {
       
     } catch (error) {
       console.error(`      ✗ Error: ${error.message}`);
+      // Record failed run
+      if (jobId) {
+        await syncState.recordSyncRun(jobId, uid, run.id, 'error', null, error.message);
+      }
       syncedRuns.push({
         runId: run.id,
         status: 'error',

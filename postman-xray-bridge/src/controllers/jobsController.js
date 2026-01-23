@@ -43,23 +43,37 @@ export async function runSync(req, res, next) {
  * 
  * Get sync job status and state
  */
-export function getStatus(req, res) {
-  const state = syncState.getFullState();
-  
-  res.json({
-    scheduler: {
-      running: scheduler.isSchedulerRunning(),
-      cronExpression: config.sync.cronExpression,
-      workspaceIds: config.postmanWorkspaceIds.length > 0 
-        ? config.postmanWorkspaceIds 
-        : '(not configured)'
-    },
-    state: {
-      lastRun: state.lastRun,
-      collectionsTracked: Object.keys(state.collections).length,
-      collections: state.collections
-    }
-  });
+export async function getStatus(req, res, next) {
+  try {
+    const state = await syncState.getFullState();
+    const recentJobs = await syncState.getRecentJobs(5);
+    
+    res.json({
+      scheduler: {
+        running: scheduler.isSchedulerRunning(),
+        cronExpression: config.sync.cronExpression,
+        workspaceIds: config.postmanWorkspaceIds.length > 0 
+          ? config.postmanWorkspaceIds 
+          : '(not configured)'
+      },
+      state: {
+        lastRun: state.lastRun,
+        collectionsTracked: Object.keys(state.collections).length,
+        collections: state.collections
+      },
+      recentJobs: recentJobs.map(job => ({
+        id: job.id,
+        startedAt: job.startedAt,
+        endedAt: job.endedAt,
+        status: job.status,
+        runsTotal: job.runsTotal,
+        runsSuccess: job.runsSuccess,
+        runsFailed: job.runsFailed
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 /**
@@ -122,11 +136,15 @@ export function stopScheduler(req, res) {
  * 
  * Reset all sync state
  */
-export function resetState(req, res) {
-  syncState.resetState();
-  res.json({
-    success: true,
-    message: 'Sync state reset'
-  });
+export async function resetState(req, res, next) {
+  try {
+    await syncState.resetState();
+    res.json({
+      success: true,
+      message: 'Sync state reset'
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
