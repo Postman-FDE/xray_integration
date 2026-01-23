@@ -7,7 +7,7 @@
 import * as postmanService from '../services/postmanService.js';
 import * as syncState from '../store/syncState.js';
 import * as xrayService from '../services/xrayService.js';
-import { transformToXrayJson } from '../services/jsonToXrayTransformer.js';
+import { transformToXrayJson } from '../transformers/mockJsonToXrayJson.js';
 import config from '../config.js';
 
 /**

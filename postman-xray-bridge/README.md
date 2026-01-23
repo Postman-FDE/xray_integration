@@ -398,9 +398,10 @@ postman-xray-bridge/
 │   │   ├── xrayService.js         # Xray Cloud API (JWT auth, import)
 │   │   ├── jiraService.js         # Jira REST API (search/create tests)
 │   │   ├── testResolver.js        # Test key resolution logic
-│   │   ├── postmanService.js      # Postman API + mock API client
-│   │   ├── junitTransformer.js    # JUnit XML transformation
-│   │   └── jsonToXrayTransformer.js  # JSON to Xray JSON transformation
+│   │   └── postmanService.js      # Postman API + mock API client
+│   ├── transformers/
+│   │   ├── junitToXrayXml.js         # JUnit XML → Xray XML (manual sync)
+│   │   └── mockJsonToXrayJson.js     # Mock JSON → Xray JSON (auto sync)
 │   ├── jobs/
 │   │   ├── scheduler.js           # Cron job scheduler
 │   │   └── syncJob.js             # Sync job logic (fetch → transform → push)

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import * as xrayService from '../services/xrayService.js';
-import { transformJUnitXml, getTestKeySummary, replaceTestKeys } from '../services/junitTransformer.js';
+import { transformJUnitXml, getTestKeySummary, replaceTestKeys } from '../transformers/junitToXrayXml.js';
 import { resolveTestKeys } from '../services/testResolver.js';
 import { cleanupFile } from '../middleware/upload.js';
 import { ValidationError, XrayApiError } from '../middleware/errorHandler.js';
