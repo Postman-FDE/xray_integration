@@ -1,13 +1,16 @@
 # LoanFlow Service
 
-A demo Loan Origination API service built for Xray/Postman integration testing.
+A demo Loan Origination API for testing Postman-Xray integration.
 
 ## Overview
 
-This service simulates a loan origination workflow with the following capabilities:
+This service simulates a loan origination workflow, providing endpoints to test with Postman and sync results to Xray.
 
-- **Loans**: Create loans, submit change orders, cancel loans, and process contract reviews
-- **Projects**: Create and retrieve projects linked to loans with TPO (Third Party Originator) information
+### Capabilities
+
+- **Loans**: Create, modify, cancel, and review loans
+- **Projects**: Link projects with TPO (Third Party Originator) information to loans
+- **State Machine**: Enforces valid loan status transitions
 
 ## Tech Stack
 
@@ -20,7 +23,7 @@ This service simulates a loan origination workflow with the following capabiliti
 
 ### Prerequisites
 
-- Node.js 18+ recommended
+- Node.js 18+
 
 ### Installation
 
@@ -31,17 +34,23 @@ npm install
 
 ### Running the Service
 
-**Development mode** (with auto-reload):
 ```bash
+# Development mode (with auto-reload)
 npm run dev
-```
 
-**Production mode**:
-```bash
+# Production mode
 npm start
 ```
 
 The service runs on `http://localhost:3000` by default.
+
+### Exposing via ngrok
+
+To make the service accessible for remote testing:
+
+```bash
+ngrok http 3000
+```
 
 ## API Endpoints
 
@@ -54,15 +63,15 @@ The service runs on `http://localhost:3000` by default.
 | `GET` | `/loans/:loanId` | Get loan details |
 | `POST` | `/loans/:loanId/change-order` | Submit a change order |
 | `POST` | `/loans/:loanId/cancel` | Cancel a loan |
-| `POST` | `/loans/:loanId/contract-review` | Submit contract review decision |
+| `POST` | `/loans/:loanId/contract-review` | Submit contract review |
 
 ### Projects
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/projects` | Create a new project |
-| `GET` | `/projects` | List all projects |
-| `GET` | `/projects/:projectId` | Get project details (TPO info) |
+| `GET` | `/projects` | List projects (filter by `?loanId=`) |
+| `GET` | `/projects/:projectId` | Get project details |
 
 ## Example Requests
 
@@ -74,10 +83,21 @@ curl -X POST http://localhost:3000/loans \
   -d '{"amount": 250000, "borrowerName": "John Smith"}'
 ```
 
+**Response:**
+```json
+{
+  "loanId": "LOAN-A1B2C3D4",
+  "amount": 250000,
+  "borrowerName": "John Smith",
+  "status": "ACTIVE",
+  "createdAt": "2025-01-22T10:00:00.000Z"
+}
+```
+
 ### Submit Change Order
 
 ```bash
-curl -X POST http://localhost:3000/loans/LOAN-XXXXXXXX/change-order \
+curl -X POST http://localhost:3000/loans/LOAN-A1B2C3D4/change-order \
   -H "Content-Type: application/json" \
   -d '{"newAmount": 275000}'
 ```
@@ -85,7 +105,7 @@ curl -X POST http://localhost:3000/loans/LOAN-XXXXXXXX/change-order \
 ### Cancel a Loan
 
 ```bash
-curl -X POST http://localhost:3000/loans/LOAN-XXXXXXXX/cancel \
+curl -X POST http://localhost:3000/loans/LOAN-A1B2C3D4/cancel \
   -H "Content-Type: application/json" \
   -d '{"reason": "Borrower withdrew application"}'
 ```
@@ -93,9 +113,15 @@ curl -X POST http://localhost:3000/loans/LOAN-XXXXXXXX/cancel \
 ### Contract Review
 
 ```bash
-curl -X POST http://localhost:3000/loans/LOAN-XXXXXXXX/contract-review \
+# Approve
+curl -X POST http://localhost:3000/loans/LOAN-A1B2C3D4/contract-review \
   -H "Content-Type: application/json" \
   -d '{"decision": "APPROVED", "notes": "All documents verified"}'
+
+# Reject
+curl -X POST http://localhost:3000/loans/LOAN-A1B2C3D4/contract-review \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "REJECTED", "notes": "Missing documentation"}'
 ```
 
 ### Create a Project
@@ -104,28 +130,41 @@ curl -X POST http://localhost:3000/loans/LOAN-XXXXXXXX/contract-review \
 curl -X POST http://localhost:3000/projects \
   -H "Content-Type: application/json" \
   -d '{
-    "loanId": "LOAN-XXXXXXXX",
+    "loanId": "LOAN-A1B2C3D4",
     "name": "Smith Residence Purchase",
     "tpoInfo": {
       "companyName": "ABC Mortgage Brokers",
       "contactName": "Jane Doe",
       "email": "jane@abcmortgage.com",
-      "licenseNumber": "MB-12345"
+      "licenseNumber": "NMLS-12345"
     }
   }'
 ```
 
-## Loan Statuses
+## Loan Status Flow
 
-| Status | Description |
-|--------|-------------|
-| `ACTIVE` | Loan is active and can be modified |
-| `CANCELLED` | Loan has been cancelled |
-| `CPC_REJECTED` | Contract review was rejected |
+```
+                    ┌──────────────┐
+                    │    ACTIVE    │
+                    └──────┬───────┘
+                           │
+           ┌───────────────┼───────────────┐
+           │               │               │
+           ▼               ▼               ▼
+    ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+    │  CANCELLED   │ │ CPC_REJECTED │ │   (other)    │
+    └──────────────┘ └──────────────┘ └──────────────┘
+```
+
+| Status | Description | Can Cancel? | Can Change Order? |
+|--------|-------------|-------------|-------------------|
+| `ACTIVE` | Loan is active | Yes | Yes |
+| `CANCELLED` | Loan cancelled | No (409) | No (409) |
+| `CPC_REJECTED` | Contract review rejected | No (409) | No (409) |
 
 ## Error Handling
 
-All errors return JSON with the following structure:
+All errors return JSON:
 
 ```json
 {
@@ -136,18 +175,33 @@ All errors return JSON with the following structure:
 
 ### HTTP Status Codes
 
-- `200` - Success
-- `201` - Created
-- `400` - Validation error
-- `404` - Resource not found
-- `409` - Conflict (invalid state transition)
-- `500` - Internal server error
+| Code | Description |
+|------|-------------|
+| `200` | Success |
+| `201` | Created |
+| `400` | Validation error |
+| `404` | Resource not found |
+| `409` | Conflict (invalid state transition) |
+| `500` | Internal server error |
 
 ## Data Storage
 
 Data is stored in SQLite at `data/loans.db`. The database is created automatically on first run.
 
+To reset the database:
+```bash
+rm -rf data/loans.db
+npm start
+```
+
+## Test Collections
+
+Postman collections are available in `collections/`:
+
+- `loanflow-api.postman_collection.json` - Basic API requests
+- `loanflow-tests.postman_collection.json` - Full test suite with assertions
+- `PF_loantests_collection.json` - Tests mapped to Jira Xray
+
 ## License
 
 MIT
-
