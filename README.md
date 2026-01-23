@@ -22,12 +22,24 @@ npm install
 npm start  # Port 3000
 ```
 
-**Terminal 2 - Xray Bridge:**
+**Terminal 2 - PostgreSQL (Docker):**
+```bash
+docker run -d \
+  --name xray_bridge_postgres \
+  -e POSTGRES_USER=xray \
+  -e POSTGRES_PASSWORD=xray \
+  -e POSTGRES_DB=xray_bridge \
+  -p 5432:5432 \
+  postgres:16
+```
+
+**Terminal 3 - Xray Bridge:**
 ```bash
 cd postman-xray-bridge
 npm install
 cp .env.example .env
 # Edit .env with your credentials
+npx prisma db push  # Initialize database
 npm start  # Port 4000
 ```
 
@@ -71,6 +83,8 @@ xray_integration/
 │   └── collections/               # Postman test collections
 │
 ├── postman-xray-bridge/           # Sync service (port 4000)
+│   ├── prisma/
+│   │   └── schema.prisma          # Database schema
 │   ├── src/
 │   │   ├── controllers/
 │   │   │   ├── syncController.js  # Manual sync (JUnit XML)
@@ -82,7 +96,9 @@ xray_integration/
 │   │   │   ├── junitTransformer.js       # XML transformation
 │   │   │   └── jsonToXrayTransformer.js  # JSON transformation
 │   │   ├── jobs/                  # Scheduled sync
-│   │   └── store/                 # Sync state tracking
+│   │   ├── store/
+│   │   │   └── syncState.js       # Sync state (PostgreSQL)
+│   │   └── generated/             # Prisma client (auto-generated)
 │   └── README.md                  # Detailed docs
 │
 └── README.md                      # This file
@@ -111,6 +127,7 @@ The bridge will:
 
 | Service | Environment Variable | Purpose |
 |---------|---------------------|---------|
+| PostgreSQL | `DATABASE_URL` | Sync state persistence |
 | Xray Cloud | `XRAY_CLIENT_ID`, `XRAY_CLIENT_SECRET` | Push test results |
 | Jira API | `JIRA_EMAIL`, `JIRA_API_TOKEN` | Search/create Test issues |
 | Postman | `POSTMAN_API_KEY` | Fetch collections |
@@ -120,7 +137,8 @@ The bridge will:
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 18+ (Node.js 24+ recommended)
+- Docker (for PostgreSQL)
 - Xray Cloud API credentials
 - Jira project with Xray enabled
 

@@ -51,7 +51,8 @@ This service syncs Postman collection run results to Xray Cloud. It supports two
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18+ (Node.js 24+ recommended for native TypeScript support)
+- Docker (for PostgreSQL)
 - Xray Cloud API credentials
 - Jira API token (optional, for auto-creating tests)
 
@@ -62,12 +63,41 @@ cd postman-xray-bridge
 npm install
 ```
 
+### Database Setup
+
+The service uses PostgreSQL for state persistence. Run PostgreSQL in Docker:
+
+```bash
+# Start PostgreSQL container
+docker run -d \
+  --name xray_bridge_postgres \
+  -e POSTGRES_USER=xray \
+  -e POSTGRES_PASSWORD=xray \
+  -e POSTGRES_DB=xray_bridge \
+  -p 5432:5432 \
+  postgres:16
+
+# Initialize database schema
+npx prisma db push
+```
+
+To reset the database (drops all data):
+```bash
+npx prisma migrate reset
+```
+
 ### Configuration
 
 Copy the example environment file and configure:
 
 ```bash
 cp .env.example .env
+```
+
+**Required - Database:**
+```bash
+# PostgreSQL connection (matches Docker container above)
+DATABASE_URL=postgresql://xray:xray@localhost:5432/xray_bridge
 ```
 
 **Required - Xray Cloud:**
@@ -96,7 +126,7 @@ POSTMAN_MOCK_URL=https://your-mock-id.mock.pstmn.io
 ```bash
 SYNC_ENABLED=false              # Start scheduler on boot
 SYNC_CRON=0 * * * *             # Every hour
-DRY_RUN=false                   # Push to Xray but don't update state
+DRY_RUN=false                   # If true: push to Xray but skip all DB updates
 ```
 
 ### Running the Service
@@ -216,7 +246,18 @@ curl http://localhost:4000/jobs/sync/status
         "lastRunTimestamp": "2025-01-21T09:55:00.000Z"
       }
     }
-  }
+  },
+  "recentJobs": [
+    {
+      "id": 1,
+      "startedAt": "2025-01-21T10:00:00.000Z",
+      "endedAt": "2025-01-21T10:00:15.000Z",
+      "status": "success",
+      "runsTotal": 2,
+      "runsSuccess": 2,
+      "runsFailed": 0
+    }
+  ]
 }
 ```
 
@@ -342,9 +383,14 @@ ngrok http 4000
 
 ```
 postman-xray-bridge/
+├── prisma/
+│   └── schema.prisma              # Database schema definition
+├── prisma.config.ts               # Prisma configuration
 ├── src/
 │   ├── config.js                  # Environment configuration
 │   ├── server.js                  # Express server
+│   ├── generated/
+│   │   └── prisma/                # Generated Prisma client (auto-generated)
 │   ├── controllers/
 │   │   ├── syncController.js      # Manual sync endpoints (JUnit XML)
 │   │   └── jobsController.js      # Sync job management
@@ -359,13 +405,21 @@ postman-xray-bridge/
 │   │   ├── scheduler.js           # Cron job scheduler
 │   │   └── syncJob.js             # Sync job logic (fetch → transform → push)
 │   ├── store/
-│   │   └── syncState.js           # Track last synced run per collection
+│   │   └── syncState.js           # Sync state (PostgreSQL via Prisma)
 │   └── middleware/
-├── data/
-│   └── sync-state.json            # Persisted sync state
 ├── collections/                   # API collections for testing
 └── test-results/                  # Sample test data
 ```
+
+## Database Schema
+
+The service tracks sync state across three tables:
+
+| Table | Purpose |
+|-------|---------|
+| `sync_state` | Last synced run per collection (prevents re-syncing) |
+| `sync_jobs` | Audit log of each sync job triggered |
+| `sync_runs` | Individual runs synced within each job |
 
 ---
 
