@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "bridge-api-collection",
     "name": "Postman-Xray Bridge API",
-    "description": "API collection for the Postman-Xray Bridge service.\n\nThis service syncs Postman collection run results to Jira Xray for test management.\n\n## Features\n- Upload JUnit XML files and sync to Xray\n- Automatic transformation to inject Xray test_key properties\n- Scheduled sync jobs to poll Postman for new runs\n- State management for incremental syncing\n\n## Setup\n1. Set the `baseUrl` variable to your bridge service URL\n2. Configure Xray credentials in the bridge service's `.env` file",
+    "description": "API collection for the Postman-Xray Bridge service.\n\nThis service syncs Postman collection run results to Jira Xray for test management.\n\n## Features\n- Upload JUnit XML files and sync to Xray\n- Sync monitor runs from real Postman APIs\n- Automatic transformation to inject Xray test_key properties\n- Scheduled sync jobs to poll Postman for new runs\n- State management for incremental syncing\n\n## Setup\n1. Set the `baseUrl` variable to your bridge service URL\n2. Configure Xray credentials in the bridge service's `.env` file",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -17,7 +17,7 @@
       "name": "Health",
       "item": [
         {
-          "name": "Health Check",
+          "name": "Server Health",
           "request": {
             "method": "GET",
             "header": [],
@@ -29,15 +29,29 @@
             "description": "Check if the bridge service is running and healthy."
           },
           "response": []
+        },
+        {
+          "name": "Xray Connection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/xray",
+              "host": ["{{baseUrl}}"],
+              "path": ["health", "xray"]
+            },
+            "description": "Check if Xray credentials are configured and valid by attempting to authenticate."
+          },
+          "response": []
         }
       ],
       "description": "Service health endpoints"
     },
     {
-      "name": "Manual Sync",
+      "name": "Sync",
       "item": [
         {
-          "name": "Upload JUnit XML and Sync",
+          "name": "JUnit XML (file upload)",
           "request": {
             "method": "POST",
             "header": [],
@@ -68,52 +82,20 @@
                   "type": "text",
                   "disabled": true,
                   "description": "Optional: Existing Test Execution key to update"
-                },
-                {
-                  "key": "testEnvironments",
-                  "value": "",
-                  "type": "text",
-                  "disabled": true,
-                  "description": "Optional: Test environment name"
                 }
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/sync",
+              "raw": "{{baseUrl}}/sync/junit",
               "host": ["{{baseUrl}}"],
-              "path": ["sync"]
+              "path": ["sync", "junit"]
             },
-            "description": "Upload a JUnit XML file, transform it to inject Xray test_key properties, and sync to Xray.\n\nThe transformation extracts test keys from testsuite names (format: `SJP-X | Test Name`) and injects them as properties in each testcase."
+            "description": "Upload a JUnit XML file and sync to Xray.\n\nThe transformation extracts test keys from testsuite names (format: `SJP-X | Test Name`) and injects them as properties in each testcase."
           },
           "response": []
         },
         {
-          "name": "Preview Transformed XML",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "file",
-                  "type": "file",
-                  "src": "",
-                  "description": "JUnit XML file to transform"
-                }
-              ]
-            },
-            "url": {
-              "raw": "{{baseUrl}}/sync/preview",
-              "host": ["{{baseUrl}}"],
-              "path": ["sync", "preview"]
-            },
-            "description": "Upload a JUnit XML file and preview the transformed output (with test_key properties injected) without actually syncing to Xray.\n\nUseful for debugging the transformation logic."
-          },
-          "response": []
-        },
-        {
-          "name": "Sync Raw XML",
+          "name": "JUnit XML (raw body)",
           "request": {
             "method": "POST",
             "header": [
@@ -127,9 +109,9 @@
               "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuites>\n  <testsuite name=\"SJP-2 | Change Order API Test\" tests=\"1\" failures=\"0\">\n    <testcase name=\"Change order submitted successfully\" time=\"0.002\"/>\n  </testsuite>\n</testsuites>"
             },
             "url": {
-              "raw": "{{baseUrl}}/sync/raw?projectKey=SJP&testPlanKey=SJP-1",
+              "raw": "{{baseUrl}}/sync/junit?projectKey=SJP&testPlanKey=SJP-1",
               "host": ["{{baseUrl}}"],
-              "path": ["sync", "raw"],
+              "path": ["sync", "junit"],
               "query": [
                 {
                   "key": "projectKey",
@@ -146,111 +128,7 @@
           "response": []
         },
         {
-          "name": "Check Xray Connection",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/sync/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["sync", "status"]
-            },
-            "description": "Check if Xray credentials are configured and valid by attempting to authenticate."
-          },
-          "response": []
-        }
-      ],
-      "description": "Endpoints for manually uploading and syncing JUnit XML results to Xray."
-    },
-    {
-      "name": "Auto-Sync Jobs",
-      "item": [
-        {
-          "name": "Trigger Sync Now",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"workspaceIds\": []\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/jobs/sync/run",
-              "host": ["{{baseUrl}}"],
-              "path": ["jobs", "sync", "run"]
-            },
-            "description": "Manually trigger the sync job immediately.\n\n**Body options:**\n- `workspaceId`: Single workspace ID to sync\n- `workspaceIds`: Array of workspace IDs to sync\n- (empty): Uses `POSTMAN_WORKSPACE_IDS` from environment config\n\nThe job will:\n1. Fetch collections from the workspace(s)\n2. Filter to collections with `test-plan-id` variable\n3. Fetch new runs since last sync\n4. Transform results and push to Xray"
-          },
-          "response": []
-        },
-        {
-          "name": "Get Sync Status",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/jobs/sync/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["jobs", "sync", "status"]
-            },
-            "description": "Get the current status of the sync scheduler and state.\n\nReturns:\n- Whether the scheduler is running\n- Cron expression\n- Configured workspace IDs\n- Last sync timestamp\n- Tracked collections and their last synced run IDs"
-          },
-          "response": []
-        },
-        {
-          "name": "Start Scheduler",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"workspaceIds\": [],\n  \"cronExpression\": \"0 * * * *\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/jobs/sync/start",
-              "host": ["{{baseUrl}}"],
-              "path": ["jobs", "sync", "start"]
-            },
-            "description": "Start the automatic sync scheduler.\n\n**Body options:**\n- `workspaceIds`: Array of workspace IDs to sync (uses env config if not provided)\n- `cronExpression`: Cron schedule (default: `0 * * * *` = every hour)\n\n**Cron examples:**\n- `0 * * * *` - Every hour\n- `*/15 * * * *` - Every 15 minutes\n- `0 9 * * *` - Daily at 9 AM"
-          },
-          "response": []
-        },
-        {
-          "name": "Stop Scheduler",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/jobs/sync/stop",
-              "host": ["{{baseUrl}}"],
-              "path": ["jobs", "sync", "stop"]
-            },
-            "description": "Stop the automatic sync scheduler."
-          },
-          "response": []
-        },
-        {
-          "name": "Reset All Sync State",
+          "name": "Monitor Runs",
           "request": {
             "method": "POST",
             "header": [
@@ -269,17 +147,176 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/jobs/sync/reset",
+              "raw": "{{baseUrl}}/sync/run",
               "host": ["{{baseUrl}}"],
-              "path": ["jobs", "sync", "reset"]
+              "path": ["sync", "run"]
             },
-            "description": "Reset all sync state. The next sync will re-process all runs as if syncing for the first time.\n\nUse with caution - this may cause duplicate test executions in Xray."
+            "description": "Sync monitor runs from real Postman Monitor APIs to Xray.\n\n**Flow:**\n1. Fetch all collections from workspace (Postman API)\n2. Filter to collections with `test-plan-id` variable (Xray-linked)\n3. Get monitors for each collection (Monitor API)\n4. Fetch runs since last sync (respects SYNC_BASE_TIME)\n5. Transform and push to Xray\n\n**Body parameters:**\n- `workspaceId` (optional): Workspace ID. Uses `POSTMAN_WORKSPACE_IDS` from env if not provided.\n- `monitorId` (optional): Specific monitor/jobtemplate ID to sync. Skips collection lookup if provided.\n\n**Environment variables:**\n- `POSTMAN_WORKSPACE_IDS`: Default workspace(s) to sync\n- `SYNC_BASE_TIME`: Only sync runs after this timestamp\n- `MONITOR_API_URL`: Internal monitor API base URL\n- `DRY_RUN`: If true, pushes to Xray but skips DB updates"
+          },
+          "response": []
+        },
+        {
+          "name": "Monitor Runs (specific workspace)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceId\": \"your-workspace-id\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sync/run",
+              "host": ["{{baseUrl}}"],
+              "path": ["sync", "run"]
+            },
+            "description": "Sync all Xray-linked collections in a specific workspace."
+          },
+          "response": []
+        },
+        {
+          "name": "Monitor Runs (specific monitor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monitorId\": \"your-monitor-jobtemplate-id\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sync/run",
+              "host": ["{{baseUrl}}"],
+              "path": ["sync", "run"]
+            },
+            "description": "Sync a specific monitor by its jobtemplate ID. Skips the workspace/collection lookup."
+          },
+          "response": []
+        },
+        {
+          "name": "Mock Sync (legacy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sync/run/mock",
+              "host": ["{{baseUrl}}"],
+              "path": ["sync", "run", "mock"]
+            },
+            "description": "⚠️ Legacy endpoint using mock APIs.\n\nTrigger sync job using mock collection run API. Use `/sync/run` for real monitor sync."
           },
           "response": []
         }
       ],
-      "description": "Endpoints for managing the automatic sync job that polls Postman for new collection runs."
+      "description": "Endpoints for syncing test results to Xray.\n\n- `/sync/junit` - Upload JUnit XML from Newman/CLI\n- `/sync/run` - Sync from real Postman Monitor APIs\n- `/sync/run/mock` - Legacy mock-based sync"
+    },
+    {
+      "name": "Scheduler",
+      "item": [
+        {
+          "name": "Get Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/scheduler/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["scheduler", "status"]
+            },
+            "description": "Get the current status of the sync scheduler and state.\n\nReturns:\n- Whether the scheduler is running\n- Cron expression\n- Configured workspace IDs\n- Last sync timestamp\n- Recent sync jobs"
+          },
+          "response": []
+        },
+        {
+          "name": "Start",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceIds\": [],\n  \"cronExpression\": \"0 * * * *\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/scheduler/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["scheduler", "start"]
+            },
+            "description": "Start the automatic sync scheduler.\n\n**Body options:**\n- `workspaceIds`: Array of workspace IDs to sync (uses env config if not provided)\n- `cronExpression`: Cron schedule (default: `0 * * * *` = every hour)\n\n**Cron examples:**\n- `0 * * * *` - Every hour\n- `*/15 * * * *` - Every 15 minutes\n- `0 9 * * *` - Daily at 9 AM"
+          },
+          "response": []
+        },
+        {
+          "name": "Stop",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/scheduler/stop",
+              "host": ["{{baseUrl}}"],
+              "path": ["scheduler", "stop"]
+            },
+            "description": "Stop the automatic sync scheduler."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset State",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/scheduler/reset",
+              "host": ["{{baseUrl}}"],
+              "path": ["scheduler", "reset"]
+            },
+            "description": "Reset all sync state. The next sync will re-process all runs as if syncing for the first time.\n\n⚠️ Use with caution - this may cause duplicate test executions in Xray."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing the automatic sync scheduler (cron-based)."
     }
   ]
 }
-

@@ -19,25 +19,19 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const POSTMAN_API_BASE = 'https://api.getpostman.com';
-
-// Mock server for APIs that don't exist yet (collection runs)
-// TODO: Remove when real Postman API endpoints are available
-const POSTMAN_MOCK_BASE = process.env.POSTMAN_MOCK_URL || 'https://be57294f-23b9-486c-b932-bcaf691d852e.mock.pstmn.io';
-
 /**
  * Make authenticated request to Postman API
  */
 async function postmanFetch(endpoint) {
-  if (!config.postmanApiKey) {
+  if (!config.postman.apiKey) {
     throw new Error('POSTMAN_API_KEY not configured');
   }
 
-  const url = `${POSTMAN_API_BASE}${endpoint}`;
+  const url = `${config.postman.apiUrl}${endpoint}`;
 
   const response = await fetch(url, {
     headers: {
-      'X-Api-Key': config.postmanApiKey
+      'X-Api-Key': config.postman.apiKey
     }
   });
 
@@ -90,7 +84,6 @@ export async function getCollection(collectionUid) {
  */
 export async function getCollectionsWithVariables(workspaceId) {
   const collections = await getCollections(workspaceId);
-  console.log(`Fetching details for ${collections.length} collections...`);
   
   const collectionsWithVars = await Promise.all(
     collections.map(async (c) => {
@@ -102,7 +95,7 @@ export async function getCollectionsWithVariables(workspaceId) {
           item: details.item
         };
       } catch (error) {
-        console.warn(`  ⚠ Failed to fetch ${c.name || c.uid}`);
+        console.warn(`Failed to fetch collection ${c.name || c.uid}: ${error.message}`);
         return { ...c, variable: [], item: [] };
       }
     })
@@ -131,13 +124,17 @@ export async function getCollectionsWithVariables(workspaceId) {
 export async function getCollectionRuns(collectionUid, options = {}) {
   const { sinceTimestamp, limit = 10 } = options;
   
+  if (!config.postman.mockUrl) {
+    throw new Error('POSTMAN_MOCK_URL not configured');
+  }
+  
   try {
     // Call mock endpoint (will be replaced with real API later)
-    const url = `${POSTMAN_MOCK_BASE}/collections/${collectionUid}/runs`;
+    const url = `${config.postman.mockUrl}/collections/${collectionUid}/runs`;
     
     const response = await fetch(url, {
       headers: {
-        'x-api-key': config.postmanApiKey || '',
+        'x-api-key': config.postman.apiKey || '',
       }
     });
     
@@ -184,38 +181,29 @@ export async function getCollectionRuns(collectionUid, options = {}) {
  * @returns {Promise<Object>} - Run results in JSON format
  */
 export async function getRunResults(collectionUid, runId) {
-  try {
-    const url = `${POSTMAN_MOCK_BASE}/collections/${collectionUid}/runs/${runId}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'x-api-key': config.postmanApiKey || '',
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Mock API error: ${response.status} ${response.statusText}`);
-    }
-    
-    const results = await response.json();
-    
-    return {
-      runId,
-      collectionUid,
-      ...results
-    };
-  } catch (error) {
-    // Fallback to local file if mock fails
-    const mockFilePath = path.join(__dirname, '../../test-results/raw-test-results/postman-cli/loanflow-results.json');
-    
-    try {
-      const fileContent = fs.readFileSync(mockFilePath, 'utf-8');
-      const results = JSON.parse(fileContent);
-      return { runId, collectionUid, ...results };
-    } catch (fileError) {
-      throw error; // Throw original error
-    }
+  if (!config.postman.mockUrl) {
+    throw new Error('POSTMAN_MOCK_URL not configured');
   }
+  
+  const url = `${config.postman.mockUrl}/collections/${collectionUid}/runs/${runId}`;
+  
+  const response = await fetch(url, {
+    headers: {
+      'x-api-key': config.postman.apiKey || '',
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Mock API error: ${response.status} ${response.statusText}`);
+  }
+  
+  const results = await response.json();
+  
+  return {
+    runId,
+    collectionUid,
+    ...results
+  };
 }
 
 /**
@@ -251,11 +239,8 @@ export function buildFolderMap(collection) {
   const folderMap = {};
   
   if (!collection.item || !Array.isArray(collection.item)) {
-    console.log('[buildFolderMap] No items found in collection');
     return folderMap;
   }
-  
-  console.log(`[buildFolderMap] Processing ${collection.item.length} top-level items`);
   
   // Iterate through folders (top-level items that have nested items)
   for (const folder of collection.item) {
@@ -270,8 +255,6 @@ export function buildFolderMap(collection) {
       }
     }
   }
-  
-  console.log(`[buildFolderMap] Mapped ${Object.keys(folderMap).length} requests to folders`);
   
   return folderMap;
 }

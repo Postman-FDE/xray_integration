@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { withRetry } from '../utils/retry.js';
 
 /**
  * Cache for the auth token
@@ -60,36 +61,38 @@ export async function authenticate() {
  * @param {string} options.testEnvironments - Test environments (optional)
  */
 export async function importJUnitResults(xmlContent, options = {}) {
-  const token = await authenticate();
-  const { baseUrl } = config.xray;
+  return withRetry(async () => {
+    const token = await authenticate();
+    const { baseUrl } = config.xray;
 
-  // Build query params
-  const params = new URLSearchParams();
-  if (options.projectKey) params.append('projectKey', options.projectKey);
-  if (options.testPlanKey) params.append('testPlanKey', options.testPlanKey);
-  if (options.testExecKey) params.append('testExecKey', options.testExecKey);
-  if (options.revision) params.append('revision', options.revision);
-  if (options.testEnvironments) params.append('testEnvironments', options.testEnvironments);
+    // Build query params
+    const params = new URLSearchParams();
+    if (options.projectKey) params.append('projectKey', options.projectKey);
+    if (options.testPlanKey) params.append('testPlanKey', options.testPlanKey);
+    if (options.testExecKey) params.append('testExecKey', options.testExecKey);
+    if (options.revision) params.append('revision', options.revision);
+    if (options.testEnvironments) params.append('testEnvironments', options.testEnvironments);
 
-  const queryString = params.toString();
-  const url = `${baseUrl}/api/v2/import/execution/junit${queryString ? `?${queryString}` : ''}`;
+    const queryString = params.toString();
+    const url = `${baseUrl}/api/v2/import/execution/junit${queryString ? `?${queryString}` : ''}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/xml',
-    },
-    body: xmlContent,
-  });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/xml',
+      },
+      body: xmlContent,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
+    }
 
-  const result = await response.json();
-  return result;
+    const result = await response.json();
+    return result;
+  }, { operationName: 'Xray JUnit import' });
 }
 
 /**
@@ -99,27 +102,29 @@ export async function importJUnitResults(xmlContent, options = {}) {
  * @returns {object} - Import result with test execution key
  */
 export async function importXrayJson(payload) {
-  const token = await authenticate();
-  const { baseUrl } = config.xray;
+  return withRetry(async () => {
+    const token = await authenticate();
+    const { baseUrl } = config.xray;
 
-  const url = `${baseUrl}/api/v2/import/execution`;
+    const url = `${baseUrl}/api/v2/import/execution`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
+    }
 
-  const result = await response.json();
-  return result;
+    const result = await response.json();
+    return result;
+  }, { operationName: 'Xray JSON import' });
 }
 
 /**

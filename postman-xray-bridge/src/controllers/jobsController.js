@@ -4,21 +4,21 @@
  * Handles sync job management endpoints.
  */
 
-import * as scheduler from '../jobs/scheduler.js';
+import * as scheduler from '../workflows/scheduler.js';
 import * as syncState from '../store/syncState.js';
 import config from '../config.js';
 
 /**
- * POST /jobs/sync/run
+ * POST /sync/run/mock
  * 
- * Manually trigger a sync job
+ * Manually trigger a sync job using mock APIs (legacy)
  */
 export async function runSync(req, res, next) {
   try {
     // Support both single workspaceId and array of workspaceIds
     let workspaceIds = req.body.workspaceIds || 
                        (req.body.workspaceId ? [req.body.workspaceId] : null) ||
-                       config.postmanWorkspaceIds;
+                       config.postman.workspaceIds;
     
     if (!workspaceIds || workspaceIds.length === 0) {
       return res.status(400).json({
@@ -39,9 +39,9 @@ export async function runSync(req, res, next) {
 }
 
 /**
- * GET /jobs/sync/status
+ * GET /scheduler/status
  * 
- * Get sync job status and state
+ * Get scheduler and sync state
  */
 export async function getStatus(req, res, next) {
   try {
@@ -52,8 +52,8 @@ export async function getStatus(req, res, next) {
       scheduler: {
         running: scheduler.isSchedulerRunning(),
         cronExpression: config.sync.cronExpression,
-        workspaceIds: config.postmanWorkspaceIds.length > 0 
-          ? config.postmanWorkspaceIds 
+        workspaceIds: config.postman.workspaceIds.length > 0 
+          ? config.postman.workspaceIds 
           : '(not configured)'
       },
       state: {
@@ -77,14 +77,14 @@ export async function getStatus(req, res, next) {
 }
 
 /**
- * POST /jobs/sync/start
+ * POST /scheduler/start
  * 
  * Start the scheduler
  */
 export function startScheduler(req, res) {
   let workspaceIds = req.body.workspaceIds || 
                      (req.body.workspaceId ? [req.body.workspaceId] : null) ||
-                     config.postmanWorkspaceIds;
+                     config.postman.workspaceIds;
   const cronExpression = req.body.cronExpression || config.sync.cronExpression;
   
   if (!workspaceIds || workspaceIds.length === 0) {
@@ -111,7 +111,7 @@ export function startScheduler(req, res) {
 }
 
 /**
- * POST /jobs/sync/stop
+ * POST /scheduler/stop
  * 
  * Stop the scheduler
  */
@@ -132,7 +132,7 @@ export function stopScheduler(req, res) {
 }
 
 /**
- * POST /jobs/sync/reset
+ * POST /scheduler/reset
  * 
  * Reset all sync state
  */

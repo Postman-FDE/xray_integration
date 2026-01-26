@@ -5,8 +5,8 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "dev": "node --experimental-strip-types --watch src/server.js",
+    "start": "node --experimental-strip-types src/server.js"
   },
   "keywords": [
     "postman",

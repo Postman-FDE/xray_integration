@@ -5,7 +5,7 @@
  */
 
 import cron from 'node-cron';
-import { runSyncJob } from './syncJob.js';
+import { runSyncJob } from './mockSyncJob.js';
 import config from '../config.js';
 
 let scheduledTask = null;
@@ -18,7 +18,7 @@ let scheduledTask = null;
  */
 export function startScheduler(options = {}) {
   const {
-    workspaceIds = config.postmanWorkspaceIds,
+    workspaceIds = config.postman.workspaceIds,
     cronExpression = '0 * * * *' // Every hour at minute 0
   } = options;
 
@@ -81,7 +81,7 @@ export async function runNow(workspaceIds) {
     ? workspaceIds 
     : workspaceIds 
       ? [workspaceIds] 
-      : config.postmanWorkspaceIds;
+      : config.postman.workspaceIds;
   
   if (!wsIds || wsIds.length === 0) {
     throw new Error('No workspace ID(s) provided or configured');

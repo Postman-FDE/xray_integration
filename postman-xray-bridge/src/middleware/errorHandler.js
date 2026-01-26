@@ -1,3 +1,5 @@
+import config from '../config.js';
+
 /**
  * Custom API Error class
  */
@@ -35,7 +37,7 @@ export class XrayApiError extends ApiError {
  */
 export function errorHandler(err, req, res, next) {
   console.error(`[ERROR] ${err.name}: ${err.message}`);
-  if (process.env.NODE_ENV === 'development' && err.stack) {
+  if (config.server.nodeEnv === 'development' && err.stack) {
     console.error(err.stack);
   }
 

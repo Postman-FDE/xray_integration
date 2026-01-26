@@ -4,7 +4,8 @@ import routes from './routes/index.js';
 import { loggingMiddleware } from './middleware/logging.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { config, validateConfig } from './config.js';
-import { startScheduler, isSchedulerRunning } from './jobs/scheduler.js';
+import { startScheduler, isSchedulerRunning } from './workflows/scheduler.js';
+import { disconnect as disconnectDb } from './store/syncState.js';
 
 const app = express();
 
@@ -25,9 +26,9 @@ app.listen(config.server.port, () => {
   const configValid = validateConfig();
 
   // Optionally start scheduler if enabled
-  if (config.sync.enabled && config.postmanWorkspaceIds.length > 0) {
+  if (config.sync.enabled && config.postman.workspaceIds.length > 0) {
     startScheduler({
-      workspaceIds: config.postmanWorkspaceIds,
+      workspaceIds: config.postman.workspaceIds,
       cronExpression: config.sync.cronExpression
     });
   }
@@ -36,8 +37,6 @@ app.listen(config.server.port, () => {
     ? `✅ Running (${config.sync.cronExpression})` 
     : '⏸️  Disabled (set SYNC_ENABLED=true)';
   
-  const workspaceCount = config.postmanWorkspaceIds.length;
-
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                                                            ║
@@ -48,17 +47,20 @@ app.listen(config.server.port, () => {
 ║   Local:  http://localhost:${config.server.port}                           ║
 ║   Health: http://localhost:${config.server.port}/health                    ║
 ║                                                            ║
-║   Manual Sync Endpoints:                                   ║
-║   • POST   /sync              Upload JUnit XML file        ║
-║   • POST   /sync/preview      Preview transformed XML      ║
-║   • GET    /sync/status       Check Xray connection        ║
+║   Health Endpoints:                                        ║
+║   • GET    /health            Server health                ║
+║   • GET    /health/xray       Xray connection check        ║
 ║                                                            ║
-║   Auto-Sync (Cron) Endpoints:                              ║
-║   • POST   /jobs/sync/run     Trigger sync now             ║
-║   • GET    /jobs/sync/status  Get scheduler status         ║
-║   • POST   /jobs/sync/start   Start scheduler              ║
-║   • POST   /jobs/sync/stop    Stop scheduler               ║
-║   • POST   /jobs/sync/reset   Reset sync state             ║
+║   Sync Endpoints:                                          ║
+║   • POST   /sync/junit        Sync JUnit XML to Xray       ║
+║   • POST   /sync/run          Sync from Postman APIs       ║
+║   • POST   /sync/run/mock     Sync from mock APIs          ║
+║                                                            ║
+║   Scheduler Endpoints:                                     ║
+║   • GET    /scheduler/status  Get scheduler status         ║
+║   • POST   /scheduler/start   Start scheduler              ║
+║   • POST   /scheduler/stop    Stop scheduler               ║
+║   • POST   /scheduler/reset   Reset sync state             ║
 ║                                                            ║
 ║   Xray:      ${configValid ? '✅ Configured' : '⚠️  Not configured'}                            ║
 ║   Scheduler: ${schedulerStatus}       ║
@@ -66,6 +68,16 @@ app.listen(config.server.port, () => {
 ╚════════════════════════════════════════════════════════════╝
   `);
 });
+
+// Graceful shutdown
+async function shutdown(signal) {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  await disconnectDb();
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;
 

@@ -5,20 +5,40 @@ import { resolveTestKeys } from '../services/testResolver.js';
 import { cleanupFile } from '../middleware/upload.js';
 import { ValidationError, XrayApiError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
+import { runSyncJob } from '../workflows/syncJob.js';
 
 /**
- * POST /sync
+ * POST /sync/junit
  * 
- * Accepts JUnit XML file and syncs to Xray
+ * Accepts JUnit XML and syncs to Xray
+ * Supports both:
+ * - File upload (multipart/form-data)
+ * - Raw XML body (application/xml or text/xml)
  * 
- * Form fields:
- * - file: JUnit XML file (required)
+ * Form fields / Query params:
  * - projectKey: Jira project key (optional, e.g., 'SJP')
  * - testPlanKey: Test plan issue key (optional, e.g., 'SJP-1')
  * - testExecKey: Existing test execution key (optional)
  * - testEnvironments: Test environments (optional)
  */
-export async function syncResults(req, res, next) {
+export async function syncJunit(req, res, next) {
+  // Determine if this is a file upload or raw body
+  const isFileUpload = !!req.file;
+  const isRawXml = typeof req.body === 'string' && req.body.trim().startsWith('<?xml');
+  
+  if (isFileUpload) {
+    return syncJunitFile(req, res, next);
+  } else if (isRawXml) {
+    return syncJunitRaw(req, res, next);
+  } else {
+    return next(new ValidationError('No JUnit XML provided. Upload a file or send raw XML body.'));
+  }
+}
+
+/**
+ * Handle JUnit XML file upload
+ */
+async function syncJunitFile(req, res, next) {
   let filePath = null;
 
   try {
@@ -114,12 +134,9 @@ export async function syncResults(req, res, next) {
 }
 
 /**
- * POST /sync/raw
- * 
- * Accepts raw JUnit XML in request body
- * Content-Type: application/xml
+ * Handle raw JUnit XML in request body
  */
-export async function syncResultsRaw(req, res, next) {
+async function syncJunitRaw(req, res, next) {
   try {
     const xmlContent = req.body;
 
@@ -156,38 +173,7 @@ export async function syncResultsRaw(req, res, next) {
 }
 
 /**
- * POST /sync/preview
- * 
- * Preview the transformed JUnit XML without sending to Xray
- * Useful for debugging the transformation
- */
-export async function previewTransform(req, res, next) {
-  let filePath = null;
-
-  try {
-    if (!req.file) {
-      throw new ValidationError('No file uploaded. Please upload a JUnit XML file.');
-    }
-
-    filePath = req.file.path;
-    const xmlContent = fs.readFileSync(filePath, 'utf-8');
-    
-    // Transform XML
-    const transformedXml = transformJUnitXml(xmlContent);
-    const testKeys = getTestKeySummary(xmlContent);
-    
-    // Clean up
-    cleanupFile(filePath);
-
-    res.type('application/xml').send(transformedXml);
-  } catch (error) {
-    cleanupFile(filePath);
-    next(error);
-  }
-}
-
-/**
- * GET /sync/status
+ * GET /health/xray
  * 
  * Check if Xray credentials are configured
  */
@@ -214,3 +200,52 @@ export async function checkStatus(req, res, next) {
   }
 }
 
+/**
+ * POST /sync/run
+ * 
+ * Trigger sync job - fetches runs from real Postman monitor APIs
+ * 
+ * Flow:
+ *   1. Fetch collections from workspace (Postman API)
+ *   2. Filter to collections with test-plan-id variable
+ *   3. Get monitors for each collection (Monitor API)
+ *   4. Sync runs to Xray
+ * 
+ * Body:
+ * - workspaceId: Workspace ID (uses env default if not provided)
+ * - monitorId: Specific monitor/jobtemplate ID (optional, skips collection lookup)
+ */
+export async function runSync(req, res, next) {
+  try {
+    const { 
+      workspaceId,
+      monitorId
+    } = req.body;
+
+    // Use provided workspaceId, or fall back to first configured workspace
+    const effectiveWorkspaceId = workspaceId || config.postman.workspaceIds?.[0];
+
+    if (!monitorId && !effectiveWorkspaceId) {
+      throw new ValidationError('workspaceId is required (or set POSTMAN_WORKSPACE_IDS in env)');
+    }
+
+    const result = await runSyncJob({ 
+      workspaceId: effectiveWorkspaceId,
+      monitorId
+    });
+
+    res.json({
+      success: true,
+      message: result.dryRun ? 'Dry run completed' : 'Sync completed',
+      result
+    });
+  } catch (error) {
+    if (error.message.includes('Not implemented')) {
+      return res.status(501).json({
+        error: 'Not implemented',
+        message: error.message
+      });
+    }
+    next(error);
+  }
+}

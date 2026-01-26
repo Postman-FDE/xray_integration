@@ -5,13 +5,12 @@
  * Also tracks sync jobs and individual run sync history.
  */
 
-import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.ts';
+import config from '../config.js';
 
 // Initialize Prisma with PostgreSQL adapter
-const connectionString = process.env.DATABASE_URL;
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg({ connectionString: config.database.url });
 const prisma = new PrismaClient({ adapter });
 
 /**

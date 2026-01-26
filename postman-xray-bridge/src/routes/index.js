@@ -9,7 +9,9 @@ import * as jobsController from '../controllers/jobsController.js';
 
 const router = Router();
 
-// Health check
+// ============================================================================
+// Health endpoints
+// ============================================================================
 router.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -18,17 +20,29 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Sync routes (JUnit XML upload)
-router.post('/sync', uploadXml, syncController.syncResults);
-router.post('/sync/raw', syncController.syncResultsRaw);
-router.post('/sync/preview', uploadXml, syncController.previewTransform);
-router.get('/sync/status', syncController.checkStatus);
+router.get('/health/xray', syncController.checkStatus);
 
-// Jobs routes (scheduler management)
-router.post('/jobs/sync/run', jobsController.runSync);
-router.get('/jobs/sync/status', jobsController.getStatus);
-router.post('/jobs/sync/start', jobsController.startScheduler);
-router.post('/jobs/sync/stop', jobsController.stopScheduler);
-router.post('/jobs/sync/reset', jobsController.resetState);
+// ============================================================================
+// Sync endpoints
+// ============================================================================
+
+// JUnit XML sync (supports both file upload and raw body)
+// - multipart/form-data: file upload
+// - application/xml or text/xml: raw body
+router.post('/sync/junit', uploadXml, syncController.syncJunit);
+
+// Real Postman APIs sync (monitors + collection runs)
+router.post('/sync/run', syncController.runSync);
+
+// Mock-based sync (legacy - uses mock collection run results API)
+router.post('/sync/run/mock', jobsController.runSync);
+
+// ============================================================================
+// Scheduler endpoints
+// ============================================================================
+router.get('/scheduler/status', jobsController.getStatus);
+router.post('/scheduler/start', jobsController.startScheduler);
+router.post('/scheduler/stop', jobsController.stopScheduler);
+router.post('/scheduler/reset', jobsController.resetState);
 
 export default router;
