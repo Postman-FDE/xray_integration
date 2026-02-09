@@ -130,7 +130,7 @@ The bridge will:
 | PostgreSQL | `DATABASE_URL` | Sync state persistence |
 | Xray Cloud | `XRAY_CLIENT_ID`, `XRAY_CLIENT_SECRET` | Push test results |
 | Jira API | `JIRA_EMAIL`, `JIRA_API_TOKEN` | Search/create Test issues |
-| Postman | `POSTMAN_API_KEY` | Fetch collections |
+| Postman | `PM_API_KEY` | Fetch collections |
 | Mock API | `POSTMAN_MOCK_URL` | Fetch collection runs (until real API exists) |
 
 ---

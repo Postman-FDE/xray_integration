@@ -13,7 +13,9 @@ import * as postmanService from '../services/postmanService.js';
 // import * as collectionRunService from '../services/collectionRunService.js';
 import * as syncState from '../store/syncState.js';
 import * as xrayService from '../services/xrayService.js';
-import { transformToXrayJson as transformMonitorRun } from '../transformers/monitorJsonToXrayJson.js';
+import { transformToXrayJson as transformMonitorResult } from '../transformers/monitorResultToXrayJson.js';
+// Legacy transformer (for reference, no longer used):
+// import { transformToXrayJson as transformMonitorRun } from '../transformers/monitorJsonToXrayJson.js';
 // TODO: Add collection run transformer when ready
 // import { transformToXrayJson as transformCollectionRun } from '../transformers/collectionRunJsonToXrayJson.js';
 import config from '../config.js';
@@ -45,15 +47,20 @@ export async function runSyncJob(options = {}) {
   console.log('SYNC RUN JOB');
   console.log('════════════════════════════════════════════════════════════════');
   console.log(`Time: ${new Date().toISOString()}`);
-  console.log(`Workspace: ${workspaceId || '(not specified)'}`);
   if (monitorId) {
     console.log(`Monitor: ${monitorId}`);
-  }
-  if (isDryRun) {
-    console.log('Mode: DRY RUN (pushes to Xray, but no DB updates)');
+  } else {
+    console.log(`Workspace: ${workspaceId}`);
   }
 
-  // Create sync job record (skip in dry run)
+  if (isDryRun) {
+    console.log('Mode: DRY RUN (pushes to Xray, but no DB updates)');
+  } else {
+    console.log('Mode: LIVE RUN (pushes to Xray and updates DB)');
+  }
+
+
+  // Create sync job record
   const jobId = isDryRun ? null : await syncState.createSyncJob();
 
   const results = {
@@ -73,14 +80,14 @@ export async function runSyncJob(options = {}) {
     } else if (workspaceId) {
       console.log('\n── Step 1: Fetching Xray-linked Collections ──');
       const allCollections = await postmanService.getCollectionsWithVariables(workspaceId);
-      
+      // TODO: Also return the testplan id here. 
       xrayCollections = postmanService.filterXrayLinkedCollections(allCollections);
       console.log(`Found ${allCollections.length} collections, ${xrayCollections.length} linked to Xray`);
       
       if (xrayCollections.length === 0) {
         console.log('No collections linked to Xray. Add test-plan-id variable to collections.');
       }
-      
+      // TODO: Do we really need this? 
       for (const c of xrayCollections) {
         const testPlanId = postmanService.getTestPlanId(c);
         console.log(`• ${c.name} → ${testPlanId}`);
@@ -93,6 +100,7 @@ export async function runSyncJob(options = {}) {
     console.log('\n── Step 2: Syncing Monitor Runs ──');
     
     for (const collection of xrayCollections) {
+      // TODO: Branch out here to also sync collection runs
       try {
         const collectionResult = await syncCollectionMonitors({
           collection,
@@ -259,7 +267,7 @@ async function syncSingleMonitor(monitor, testPlanId, folderMap, isDryRun, jobId
   const monitorName = monitor.name;
 
   console.log(`\n📊 Monitor: ${monitorName || monitorId}`);
-
+  // TODO: Fix, get effective since timestamp shouldn't take any params. 
   const lastSyncedTimestamp = await syncState.getLastSyncedTimestamp(monitorId);
   const baseTime = config.sync.baseTime;
   const effectiveSince = getEffectiveSinceTimestamp(lastSyncedTimestamp);
@@ -283,20 +291,21 @@ async function syncSingleMonitor(monitor, testPlanId, folderMap, isDryRun, jobId
   
   for (const job of jobs) {
     jobsProcessed++;
-    const jobId_internal = job.id || job._id;
+    const jobId_internal = job.id ;
     
     // Fetch runs for this job only when we need them (lazy)
     const runs = await monitorService.getJobRuns(jobId_internal);
     
     for (const run of runs) {
+      // TODO: Fix
       console.log(`Processing job ${jobsProcessed}/${jobs.length}, run ${run.id}`);
       
       // Add job context to run (including job's finishedAt for consistent timestamp tracking)
       const runWithContext = {
         ...run,
-        jobId: jobId_internal,
+        jobId: jobId_internal, // TODO: Fix, no need jobId internal
         jobName: job.name,
-        jobFinishedAt: job.finishedAt || job.createdAt  // Used for sync state - must match filter timestamp
+        jobFinishedAt: job.finishedAt || job.createdAt  // TODO: Fix, we should use one of them. Used for sync state - must match filter timestamp
       };
       
       const runResult = await syncSingleRun({
@@ -307,8 +316,8 @@ async function syncSingleMonitor(monitor, testPlanId, folderMap, isDryRun, jobId
         run: runWithContext,
         isDryRun,
         jobId,
-        getResults: () => monitorService.getRunResults(monitorId, run.id),
-        transform: (results) => transformMonitorRun(results, folderMap, { testPlanKey: testPlanId, monitorName })
+        getResults: () => monitorService.getRunSummary(monitorId, run.id),
+        transform: (results) => transformMonitorResult(results, folderMap, { testPlanKey: testPlanId })
       });
       syncedRuns.push(runResult);
       

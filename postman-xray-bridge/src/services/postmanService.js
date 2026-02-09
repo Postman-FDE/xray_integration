@@ -18,16 +18,18 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
+// TODO: Move this to utils
 /**
  * Make authenticated request to Postman API
  */
 async function postmanFetch(endpoint) {
   if (!config.postman.apiKey) {
-    throw new Error('POSTMAN_API_KEY not configured');
+    throw new Error('PM_API_KEY not configured');
   }
 
   const url = `${config.postman.apiUrl}${endpoint}`;
+  console.log('[DEBUG] Postman API URL:', url);
+  console.log('[DEBUG] API Key (first 20 chars):', config.postman.apiKey?.substring(0, 20) + '...');
 
   const response = await fetch(url, {
     headers: {
@@ -212,6 +214,7 @@ export async function getRunResults(collectionUid, runId) {
  * @returns {Array} - Filtered collections linked to Xray
  */
 export function filterXrayLinkedCollections(collections) {
+  // TODO: add a sync flag, check that here to determine whether to sync or not
   return collections.filter(c => 
     c.variable?.some(v => v.key === 'test-plan-id')
   );

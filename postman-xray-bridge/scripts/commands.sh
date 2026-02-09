@@ -11,7 +11,7 @@ postman collection run 49591604-522ff624-d39e-40bd-9eed-7aa45ffc6d35 --reporters
 # JSON response 
 postman collection run 49591604-522ff624-d39e-40bd-9eed-7aa45ffc6d35 --reporters json --reporter-json-export ./test-results/postman-cli/loanflow-results.json
 # Note: Requires Postman CLI login first
-# postman login --with-api-key $POSTMAN_API_KEY
+# postman login --with-api-key $PM_API_KEY
 
 # ============================================================================
 # 2. SYNC RESULTS TO XRAY

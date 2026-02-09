@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types --watch src/server.js",
+    "debug": "node --inspect --experimental-strip-types src/server.js",
     "start": "node --experimental-strip-types src/server.js"
   },
   "keywords": [

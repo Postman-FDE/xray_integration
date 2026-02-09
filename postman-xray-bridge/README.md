@@ -117,7 +117,7 @@ JIRA_BASE_URL=https://your-instance.atlassian.net
 
 **Optional - Postman (for automated sync jobs):**
 ```bash
-POSTMAN_API_KEY=PMAK-xxxxxxxx
+PM_API_KEY=PMAK-xxxxxxxx
 POSTMAN_WORKSPACE_IDS=workspace-id-1,workspace-id-2
 POSTMAN_MOCK_URL=https://your-mock-id.mock.pstmn.io
 ```

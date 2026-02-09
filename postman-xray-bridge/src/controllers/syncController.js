@@ -6,7 +6,7 @@ import { cleanupFile } from '../middleware/upload.js';
 import { ValidationError, XrayApiError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
 import { runSyncJob } from '../workflows/syncJob.js';
-
+// TODO: Get rid of one of the syncJunit, syncJunit Raw methods
 /**
  * POST /sync/junit
  * 
