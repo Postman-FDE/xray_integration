@@ -1,426 +1,199 @@
 # Postman-Xray-Bridge
 
-A bridge service to sync Postman test results to Jira Xray with automatic test issue creation.
+A bridge service that syncs Postman Monitor run results to Jira Xray.
 
-## Overview
-
-This service syncs Postman collection run results to Xray Cloud. It supports two modes of operation:
-
-1. **Manual sync** - Upload JUnit XML directly (Newman CLI output)
-2. **Automated sync** - Fetch collection runs from Postman (via mock API) and push JSON results to Xray
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           SYNC MODES                                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  MODE 1: Manual (JUnit XML)                                                 │
-│  ────────────────────────────                                               │
-│  ┌─────────────┐  JUnit XML   ┌─────────────────┐          ┌─────────────┐  │
-│  │  Newman CLI │─────────────▶│  POST /sync     │─────────▶│  Xray Cloud │  │
-│  └─────────────┘              └─────────────────┘          └─────────────┘  │
-│                                       │                                     │
-│                                       ▼ (if projectKey provided)            │
-│                               ┌─────────────────┐                           │
-│                               │  Jira REST API  │                           │
-│                               │  (auto-create)  │                           │
-│                               └─────────────────┘                           │
-│                                                                             │
-│  MODE 2: Automated (JSON via Mock API)                                      │
-│  ───────────────────────────────────────                                    │
-│  ┌─────────────┐  list runs   ┌─────────────────┐   JSON   ┌─────────────┐  │
-│  │  Mock API   │◀────────────▶│  Sync Job       │─────────▶│  Xray Cloud │  │
-│  │  (Postman)  │  run results │  /jobs/sync/run │          │             │  │
-│  └─────────────┘              └─────────────────┘          └─────────────┘  │
-│                                                                             │
-│  Note: Auto-create not yet implemented for Mode 2                           │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Features
-
-- **JUnit XML sync** - Upload Newman results directly via `/sync`
-- **JSON sync via mock API** - Fetch past collection runs and transform to Xray format
-- **Auto-create Jira Tests** - Creates Test issues if they don't exist (JUnit XML mode only)
-- **Test Plan resolution** - Auto-resolves Test Plans by collection prefix (JUnit XML mode only)
-- **Scheduled sync** - Cron-based automatic synchronization
-- **State tracking** - Tracks last synced run per collection to avoid duplicates
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+ (Node.js 24+ recommended for native TypeScript support)
-- Docker (for PostgreSQL)
-- Xray Cloud API credentials
-- Jira API token (optional, for auto-creating tests)
-
-### Installation
+## Quick Start
 
 ```bash
+# 1. Clone and install
+git clone <repo>
 cd postman-xray-bridge
 npm install
-```
 
-### Database Setup
-
-The service uses PostgreSQL for state persistence. Run PostgreSQL in Docker:
-
-```bash
-# Start PostgreSQL container
-docker run -d \
-  --name xray_bridge_postgres \
-  -e POSTGRES_USER=xray \
-  -e POSTGRES_PASSWORD=xray \
-  -e POSTGRES_DB=xray_bridge \
-  -p 5432:5432 \
-  postgres:16
-
-# Initialize database schema
-npx prisma db push
-```
-
-To reset the database (drops all data):
-```bash
-npx prisma migrate reset
-```
-
-### Configuration
-
-Copy the example environment file and configure:
-
-```bash
+# 2. Set up environment
 cp .env.example .env
-```
+# Edit .env with your credentials (see Configuration below)
 
-**Required - Database:**
-```bash
-# PostgreSQL connection (matches Docker container above)
-DATABASE_URL=postgresql://xray:xray@localhost:5432/xray_bridge
-```
+# 3. Start database
+docker-compose up -d
 
-**Required - Xray Cloud:**
-```bash
-# Get from: Jira → Apps → Xray → API Keys
-XRAY_CLIENT_ID=your_client_id
-XRAY_CLIENT_SECRET=your_client_secret
-```
+# 4. Initialize database
+npx prisma db push
+npx prisma generate
 
-**Optional - Jira API (for auto-creating tests):**
-```bash
-# Get token from: https://id.atlassian.com/manage-profile/security/api-tokens
-JIRA_EMAIL=your_email@company.com
-JIRA_API_TOKEN=your_jira_api_token
-JIRA_BASE_URL=https://your-instance.atlassian.net
-```
-
-**Optional - Postman (for automated sync jobs):**
-```bash
-PM_API_KEY=PMAK-xxxxxxxx
-POSTMAN_WORKSPACE_IDS=workspace-id-1,workspace-id-2
-POSTMAN_MOCK_URL=https://your-mock-id.mock.pstmn.io
-```
-
-**Optional - Scheduler:**
-```bash
-SYNC_ENABLED=false              # Start scheduler on boot
-SYNC_CRON=0 * * * *             # Every hour
-DRY_RUN=false                   # If true: push to Xray but skip all DB updates
-```
-
-### Running the Service
-
-```bash
-# Development mode (with auto-reload)
+# 5. Start service
 npm run dev
-
-# Production mode
-npm start
 ```
 
-The service runs on `http://localhost:4000` by default.
+Service runs at `http://localhost:3003`
+
+---
+
+## Prerequisites
+
+- Node.js 18+ (Node.js 24+ recommended for native TypeScript)
+- Docker (for PostgreSQL)
+- Xray Cloud API credentials
+- Postman API key
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and configure:
+
+### Required
+
+```bash
+# Database (used by docker-compose)
+POSTGRES_USER=xray
+POSTGRES_PASSWORD=xray
+POSTGRES_DB=xray_bridge
+DATABASE_URL=postgresql://xray:xray@localhost:5432/xray_bridge
+
+# Xray Cloud (get from: Jira → Apps → Xray → API Keys)
+XRAY_CLIENT_ID=your-client-id
+XRAY_CLIENT_SECRET=your-client-secret
+
+# Postman API (get from: postman.co/settings/me/api-keys)
+PM_API_KEY=PMAK-xxxxxxxx
+POSTMAN_WORKSPACE_IDS=your-workspace-id
+
+# Monitor API (newman-remote-api)
+NEWMAN_REMOTE_API_URL=http://localhost:8080
+X_ACCESS_TOKEN=your-monitor-api-access-token
+```
+
+### Optional
+
+```bash
+# Sync settings
+SYNC_ENABLED=false           # Auto-start scheduler
+SYNC_CRON=0 * * * *          # Cron expression (every hour)
+SYNC_BASE_TIME=2026-01-01T00:00:00Z  # Only sync runs after this time
+DRY_RUN=false                # Push to Xray but skip DB updates
+
+# Server
+PORT=3003
+```
 
 ---
 
 ## API Endpoints
 
-### Manual Sync (JUnit XML)
+### Sync
 
-#### POST /sync
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/sync/run` | Sync monitor runs to Xray |
+| `POST` | `/sync/junit` | Upload JUnit XML to Xray |
 
-Upload a JUnit XML file (from Newman) and sync to Xray.
+### Scheduler
 
-```bash
-curl -X POST http://localhost:4000/sync \
-  -F "file=@results.xml" \
-  -F "projectKey=PF" \
-  -F "testPlanKey=PF-1"
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/scheduler/status` | Get scheduler and sync state |
+| `POST` | `/scheduler/start` | Start the cron scheduler |
+| `POST` | `/scheduler/stop` | Stop the cron scheduler |
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `file` | Yes | JUnit XML file |
-| `projectKey` | No | Jira project key - enables auto-create |
-| `testPlanKey` | No | Test plan issue key (e.g., 'PF-1') |
-| `testExecKey` | No | Existing test execution to update |
-| `testEnvironments` | No | Test environment name |
+### Health
 
-#### POST /sync/raw
-
-Send raw JUnit XML in the request body.
-
-```bash
-curl -X POST "http://localhost:4000/sync/raw?projectKey=PF" \
-  -H "Content-Type: application/xml" \
-  --data-binary @results.xml
-```
-
-#### POST /sync/preview
-
-Preview the transformed XML without sending to Xray.
-
-```bash
-curl -X POST http://localhost:4000/sync/preview \
-  -F "file=@results.xml"
-```
-
-#### GET /sync/status
-
-Check if Xray credentials are valid.
-
-```bash
-curl http://localhost:4000/sync/status
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Service health check |
+| `GET` | `/health/xray` | Xray connection check |
 
 ---
 
-### Automated Sync Jobs (JSON via Mock API)
+## Usage
 
-The sync job fetches collection runs from a Postman mock server, transforms the JSON results to Xray format, and pushes them.
-
-#### POST /jobs/sync/run
-
-Manually trigger a sync job. Fetches new collection runs since last sync.
+### Manual Sync
 
 ```bash
-# Sync specific workspace(s)
-curl -X POST http://localhost:4000/jobs/sync/run \
+# Sync all monitors in a workspace
+curl -X POST http://localhost:3003/sync/run \
   -H "Content-Type: application/json" \
-  -d '{"workspaceIds": ["workspace-id-1"]}'
+  -d '{"workspaceId": "your-workspace-id"}'
 
-# Sync default workspaces (from POSTMAN_WORKSPACE_IDS)
-curl -X POST http://localhost:4000/jobs/sync/run
-```
-
-**How it works:**
-1. Fetches all collections in the workspace
-2. Filters to collections with `test-plan-id` variable (Xray-linked)
-3. For each collection, fetches runs from mock API since last sync
-4. Transforms JSON results to Xray JSON format
-5. Pushes to Xray Cloud
-6. Updates sync state
-
-#### GET /jobs/sync/status
-
-Get scheduler status and sync state.
-
-```bash
-curl http://localhost:4000/jobs/sync/status
-```
-
-**Response:**
-```json
-{
-  "scheduler": {
-    "running": false,
-    "cronExpression": "0 * * * *",
-    "workspaceIds": ["workspace-id-1"]
-  },
-  "state": {
-    "lastRun": "2025-01-21T10:00:00.000Z",
-    "collectionsTracked": 2,
-    "collections": {
-      "12345-abc": {
-        "lastRunId": "run-123",
-        "lastRunTimestamp": "2025-01-21T09:55:00.000Z"
-      }
-    }
-  },
-  "recentJobs": [
-    {
-      "id": 1,
-      "startedAt": "2025-01-21T10:00:00.000Z",
-      "endedAt": "2025-01-21T10:00:15.000Z",
-      "status": "success",
-      "runsTotal": 2,
-      "runsSuccess": 2,
-      "runsFailed": 0
-    }
-  ]
-}
-```
-
-#### POST /jobs/sync/start
-
-Start the scheduler.
-
-```bash
-curl -X POST http://localhost:4000/jobs/sync/start \
+# Sync specific monitor
+curl -X POST http://localhost:3003/sync/run \
   -H "Content-Type: application/json" \
-  -d '{"workspaceIds": ["ws-id"], "cronExpression": "*/30 * * * *"}'
+  -d '{"monitorId": "your-monitor-id"}'
 ```
 
-#### POST /jobs/sync/stop
-
-Stop the scheduler.
+### Scheduled Sync
 
 ```bash
-curl -X POST http://localhost:4000/jobs/sync/stop
-```
-
-#### POST /jobs/sync/reset
-
-Reset all sync state (re-sync from beginning).
-
-```bash
-curl -X POST http://localhost:4000/jobs/sync/reset
-```
-
----
-
-### Health Check
-
-```bash
-curl http://localhost:4000/health
-```
-
----
-
-## Mock API
-
-The sync job uses a **Postman mock server** to fetch collection runs. This is because the real Postman API doesn't yet expose collection run history endpoints.
-
-**Mock endpoints used:**
-- `GET /collections/{uid}/runs` - List runs for a collection
-- `GET /collections/{uid}/runs/{runId}` - Get run results
-
-Configure via:
-```bash
-POSTMAN_MOCK_URL=https://your-mock-id.mock.pstmn.io
-```
-
-When the real Postman API adds these endpoints, the mock will be replaced.
-
----
-
-## Usage Examples
-
-### With Newman CLI
-
-```bash
-# Run tests and export JUnit XML
-newman run collection.json -r junit --reporter-junit-export results.xml
-
-# Sync to Xray
-curl -X POST http://localhost:4000/sync \
-  -F "file=@results.xml" \
-  -F "projectKey=PF" \
-  -F "testPlanKey=PF-1"
-```
-
-### One-liner
-
-```bash
-newman run collection.json -r junit --reporter-junit-export results.xml && \
-curl -X POST http://localhost:4000/sync \
-  -F "file=@results.xml" \
-  -F "projectKey=PF"
-```
-
-### Automated Sync
-
-```bash
-# Trigger sync job for workspace
-curl -X POST http://localhost:4000/jobs/sync/run \
+# Start scheduler
+curl -X POST http://localhost:3003/scheduler/start \
   -H "Content-Type: application/json" \
-  -d '{"workspaceIds": ["your-workspace-id"]}'
+  -d '{"workspaceIds": ["ws-id-1"], "cronExpression": "0 * * * *"}'
+
+# Check status
+curl http://localhost:3003/scheduler/status
+
+# Stop scheduler
+curl -X POST http://localhost:3003/scheduler/stop
 ```
 
 ---
 
-## Collection Setup for Xray
+## Collection Setup
 
-### Naming Convention
+### Link Collection to Xray Test Plan
 
-Name your Postman folders with Jira-style prefixes:
-
-```
-PF-2 | Change Order API Test
-PF-3 | Cancel Loan API Test
-PF-4 | Contract Review Test
-```
-
-### Collection Variable
-
-Add a `test-plan-id` variable to link the collection to an Xray Test Plan:
+Add a `test-plan-id` variable to your Postman collection:
 
 | Variable | Value |
 |----------|-------|
-| `test-plan-id` | `PF-1` |
+| `test-plan-id` | `PF-123` |
+
+### Folder Naming Convention
+
+Name folders with Xray test key prefixes:
+
+```
+PF-1 | Login API Tests
+PF-2 | Create Order Tests
+PF-3 | Payment Flow Tests
+```
 
 ---
 
-## Exposing with ngrok
+## Development
 
 ```bash
-ngrok http 4000
+# Development with auto-reload
+npm run dev
+
+# Debug mode (with inspector)
+npm run debug
+
+# Production
+npm start
+```
+
+### Database Commands
+
+```bash
+# View database in browser
+npx prisma studio
+
+# Reset database (drops all data)
+npx prisma db push --force-reset
+
+# Regenerate Prisma client
+npx prisma generate
 ```
 
 ---
 
-## Project Structure
+## Architecture
 
-```
-postman-xray-bridge/
-├── prisma/
-│   └── schema.prisma              # Database schema definition
-├── prisma.config.ts               # Prisma configuration
-├── src/
-│   ├── config.js                  # Environment configuration
-│   ├── server.js                  # Express server
-│   ├── generated/
-│   │   └── prisma/                # Generated Prisma client (auto-generated)
-│   ├── controllers/
-│   │   ├── syncController.js      # Manual sync endpoints (JUnit XML)
-│   │   └── jobsController.js      # Sync job management
-│   ├── services/
-│   │   ├── xrayService.js         # Xray Cloud API (JWT auth, import)
-│   │   ├── jiraService.js         # Jira REST API (search/create tests)
-│   │   ├── testResolver.js        # Test key resolution logic
-│   │   └── postmanService.js      # Postman API + mock API client
-│   ├── transformers/
-│   │   ├── junitToXrayXml.js         # JUnit XML → Xray XML (manual sync)
-│   │   └── mockJsonToXrayJson.js     # Mock JSON → Xray JSON (auto sync)
-│   ├── jobs/
-│   │   ├── scheduler.js           # Cron job scheduler
-│   │   └── syncJob.js             # Sync job logic (fetch → transform → push)
-│   ├── store/
-│   │   └── syncState.js           # Sync state (PostgreSQL via Prisma)
-│   └── middleware/
-├── collections/                   # API collections for testing
-└── test-results/                  # Sample test data
-```
-
-## Database Schema
-
-The service tracks sync state across three tables:
-
-| Table | Purpose |
-|-------|---------|
-| `sync_state` | Last synced run per collection (prevents re-syncing) |
-| `sync_jobs` | Audit log of each sync job triggered |
-| `sync_runs` | Individual runs synced within each job |
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed documentation on:
+- Directory structure
+- Code flow diagrams
+- Layer responsibilities
 
 ---
 

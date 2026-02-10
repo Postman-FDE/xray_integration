@@ -1,11 +1,11 @@
 import fs from 'fs';
-import * as xrayService from '../services/xrayService.js';
+import * as xrayClient from '../clients/xrayClient.js';
 import { transformJUnitXml, getTestKeySummary, replaceTestKeys } from '../transformers/junitToXrayXml.js';
-import { resolveTestKeys } from '../services/testResolver.js';
+import { resolveTestKeys } from '../utils/testResolver.js';
 import { cleanupFile } from '../middleware/upload.js';
 import { ValidationError, XrayApiError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
-import { runSyncJob } from '../workflows/syncJob.js';
+import * as syncService from '../services/syncService.js';
 // TODO: Get rid of one of the syncJunit, syncJunit Raw methods
 /**
  * POST /sync/junit
@@ -105,7 +105,7 @@ async function syncJunitFile(req, res, next) {
     console.log('[SyncController] Sync options:', finalOptions);
 
     // Import to Xray with transformed XML
-    const result = await xrayService.importJUnitResults(transformedXml, finalOptions);
+    const result = await xrayClient.importJUnitResults(transformedXml, finalOptions);
 
     // Clean up uploaded file
     cleanupFile(filePath);
@@ -153,7 +153,7 @@ async function syncJunitRaw(req, res, next) {
     };
 
     // Import to Xray
-    const result = await xrayService.importJUnitResults(xmlContent, options);
+    const result = await xrayClient.importJUnitResults(xmlContent, options);
 
     res.json({
       success: true,
@@ -180,7 +180,7 @@ async function syncJunitRaw(req, res, next) {
 export async function checkStatus(req, res, next) {
   try {
     // Try to authenticate to verify credentials
-    await xrayService.authenticate();
+    await xrayClient.authenticate();
 
     res.json({
       status: 'ok',
@@ -229,7 +229,7 @@ export async function runSync(req, res, next) {
       throw new ValidationError('workspaceId is required (or set POSTMAN_WORKSPACE_IDS in env)');
     }
 
-    const result = await runSyncJob({ 
+    const result = await syncService.syncRuns({ 
       workspaceId: effectiveWorkspaceId,
       monitorId
     });

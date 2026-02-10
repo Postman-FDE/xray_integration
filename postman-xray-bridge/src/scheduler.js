@@ -5,8 +5,8 @@
  */
 
 import cron from 'node-cron';
-import { runSyncJob } from './mockSyncJob.js';
-import config from '../config.js';
+import * as syncService from './services/syncService.js';
+import config from './config.js';
 
 let scheduledTask = null;
 
@@ -42,7 +42,7 @@ export function startScheduler(options = {}) {
     
     try {
       const results = await runNow(workspaceIds);
-      const totalSynced = results.reduce((sum, r) => sum + r.synced, 0);
+      const totalSynced = results.reduce((sum, r) => sum + (r.totalSynced || 0), 0);
       console.log(`[Scheduler] Job completed. Synced ${totalSynced} runs across ${workspaceIds.length} workspace(s).`);
     } catch (error) {
       console.error('[Scheduler] Job failed:', error.message);
@@ -91,7 +91,7 @@ export async function runNow(workspaceIds) {
   
   for (const wsId of wsIds) {
     try {
-      const result = await runSyncJob(wsId);
+      const result = await syncService.syncRuns({ workspaceId: wsId });
       results.push(result);
     } catch (error) {
       console.error(`[Scheduler] Error syncing workspace ${wsId}:`, error.message);

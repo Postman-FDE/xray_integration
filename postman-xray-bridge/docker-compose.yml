@@ -1,0 +1,29 @@
+# Docker Compose for postman-xray-bridge
+# 
+# Usage:
+#   1. Copy .env.example to .env and fill in values
+#   2. Run: docker-compose up -d
+#
+# This starts the PostgreSQL database.
+# The service itself runs via npm (for development).
+
+services:
+  db:
+    image: postgres:15
+    container_name: xray-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-xray}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-xray}
+      POSTGRES_DB: ${POSTGRES_DB:-xray_bridge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xray}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

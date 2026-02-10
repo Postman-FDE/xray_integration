@@ -92,7 +92,7 @@ function extractTestResults(requests, folderMap = {}) {
     const folderName = folderMap[baseRequestId] || null;
     
     // DEBUG: Log each lookup
-    console.log(`[DEBUG] Request: "${request.name}" | requestId: "${request.requestId}" | baseId: "${baseRequestId}" | folderName: ${folderName || 'NOT FOUND'}`);
+    console.log(`[DEBUG] Request: "${request.name}" | folderName: ${folderName || 'NOT FOUND'}`);
     
     // Extract test key from folder name first, then fall back to request name
     const testKey = extractTestKey(folderName) || extractTestKey(request.name);

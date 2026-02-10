@@ -1,4 +1,4 @@
-import * as jiraService from './jiraService.js';
+import * as jiraClient from '../clients/jiraClient.js';
 import { config } from '../config.js';
 
 /**
@@ -43,7 +43,7 @@ async function resolveTestKey(projectKey, identifier, summary) {
   console.log(`[TestResolver] Resolving ${identifier}...`);
   
   // Search Jira
-  const existingTest = await jiraService.searchTestByIdentifier(projectKey, identifier);
+  const existingTest = await jiraClient.searchTestByIdentifier(projectKey, identifier);
   
   if (existingTest) {
     console.log(`[TestResolver] Found existing test: ${existingTest.key}`);
@@ -53,7 +53,7 @@ async function resolveTestKey(projectKey, identifier, summary) {
   
   // Create new test
   console.log(`[TestResolver] Creating new test for ${identifier}...`);
-  const newTest = await jiraService.createTest(projectKey, identifier, summary || 'Test');
+  const newTest = await jiraClient.createTest(projectKey, identifier, summary || 'Test');
   console.log(`[TestResolver] Created: ${newTest.key}`);
   
   cache.tests.set(cacheKey, newTest.key);
@@ -78,7 +78,7 @@ async function resolveTestPlanKey(projectKey, prefix, name) {
   console.log(`[TestResolver] Resolving Test Plan for prefix ${prefix}...`);
   
   // Search for Test Plan
-  const existingPlan = await jiraService.searchTestPlanByPrefix(projectKey, prefix);
+  const existingPlan = await jiraClient.searchTestPlanByPrefix(projectKey, prefix);
   
   if (existingPlan) {
     console.log(`[TestResolver] Found existing Test Plan: ${existingPlan.key}`);
@@ -88,7 +88,7 @@ async function resolveTestPlanKey(projectKey, prefix, name) {
   
   // Create new Test Plan
   console.log(`[TestResolver] Creating new Test Plan for ${prefix}...`);
-  const newPlan = await jiraService.createTestPlan(projectKey, prefix, name || 'Test Plan');
+  const newPlan = await jiraClient.createTestPlan(projectKey, prefix, name || 'Test Plan');
   console.log(`[TestResolver] Created Test Plan: ${newPlan.key}`);
   
   cache.testPlans.set(cacheKey, newPlan.key);

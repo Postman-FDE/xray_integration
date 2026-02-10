@@ -35,7 +35,6 @@ router.post('/sync/junit', uploadXml, syncController.syncJunit);
 router.post('/sync/run', syncController.runSync);
 
 // Mock-based sync (legacy - uses mock collection run results API)
-router.post('/sync/run/mock', jobsController.runSync);
 
 // ============================================================================
 // Scheduler endpoints
@@ -43,6 +42,5 @@ router.post('/sync/run/mock', jobsController.runSync);
 router.get('/scheduler/status', jobsController.getStatus);
 router.post('/scheduler/start', jobsController.startScheduler);
 router.post('/scheduler/stop', jobsController.stopScheduler);
-router.post('/scheduler/reset', jobsController.resetState);
 
 export default router;

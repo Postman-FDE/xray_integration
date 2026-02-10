@@ -4,7 +4,7 @@ import routes from './routes/index.js';
 import { loggingMiddleware } from './middleware/logging.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { config, validateConfig } from './config.js';
-import { startScheduler, isSchedulerRunning } from './workflows/scheduler.js';
+import { startScheduler, isSchedulerRunning } from './scheduler.js';
 import { disconnect as disconnectDb } from './store/syncState.js';
 
 const app = express();
@@ -54,13 +54,11 @@ app.listen(config.server.port, () => {
 ║   Sync Endpoints:                                          ║
 ║   • POST   /sync/junit        Sync JUnit XML to Xray       ║
 ║   • POST   /sync/run          Sync from Postman APIs       ║
-║   • POST   /sync/run/mock     Sync from mock APIs          ║
 ║                                                            ║
 ║   Scheduler Endpoints:                                     ║
 ║   • GET    /scheduler/status  Get scheduler status         ║
 ║   • POST   /scheduler/start   Start scheduler              ║
 ║   • POST   /scheduler/stop    Stop scheduler               ║
-║   • POST   /scheduler/reset   Reset sync state             ║
 ║                                                            ║
 ║   Xray:      ${configValid ? '✅ Configured' : '⚠️  Not configured'}                            ║
 ║   Scheduler: ${schedulerStatus}       ║

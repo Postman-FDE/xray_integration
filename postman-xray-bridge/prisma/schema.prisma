@@ -10,16 +10,18 @@ datasource db {
   provider = "postgresql"
 }
 
-// Tracks the last synced run per collection
+// Tracks the last synced run per source (monitor or collection)
 model SyncState {
-  collectionUid    String    @id @map("collection_uid")
-  collectionName   String?   @map("collection_name")
+  sourceId         String    @map("source_id")        // Monitor ID or Collection UID
+  sourceType       String    @map("source_type")      // 'monitor' | 'collection_run'
+  sourceName       String?   @map("source_name")      // Monitor name or Collection name
   testPlanKey      String?   @map("test_plan_key")
   lastRunId        String?   @map("last_run_id")
   lastRunTimestamp DateTime? @map("last_run_timestamp")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
+  @@id([sourceId, sourceType])
   @@map("sync_state")
 }
 
@@ -40,14 +42,15 @@ model SyncJob {
 
 // Tracks individual runs synced within a job
 model SyncRun {
-  id            Int      @id @default(autoincrement())
-  jobId         Int      @map("job_id")
-  collectionUid String   @map("collection_uid")
-  runId         String   @map("run_id")
-  xrayExecKey   String?  @map("xray_exec_key")
-  status        String   // success, error
-  errorMessage  String?  @map("error_message")
-  syncedAt      DateTime @default(now()) @map("synced_at")
+  id           Int      @id @default(autoincrement())
+  jobId        Int      @map("job_id")
+  sourceId     String   @map("source_id")      // Monitor ID or Collection UID
+  sourceType   String   @map("source_type")    // 'monitor' | 'collection_run'
+  runId        String   @map("run_id")
+  xrayExecKey  String?  @map("xray_exec_key")
+  status       String   // success, error
+  errorMessage String?  @map("error_message")
+  syncedAt     DateTime @default(now()) @map("synced_at")
 
   job SyncJob @relation(fields: [jobId], references: [id])
 

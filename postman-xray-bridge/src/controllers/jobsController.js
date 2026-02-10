@@ -4,39 +4,9 @@
  * Handles sync job management endpoints.
  */
 
-import * as scheduler from '../workflows/scheduler.js';
+import * as scheduler from '../scheduler.js';
 import * as syncState from '../store/syncState.js';
 import config from '../config.js';
-
-/**
- * POST /sync/run/mock
- * 
- * Manually trigger a sync job using mock APIs (legacy)
- */
-export async function runSync(req, res, next) {
-  try {
-    // Support both single workspaceId and array of workspaceIds
-    let workspaceIds = req.body.workspaceIds || 
-                       (req.body.workspaceId ? [req.body.workspaceId] : null) ||
-                       config.postman.workspaceIds;
-    
-    if (!workspaceIds || workspaceIds.length === 0) {
-      return res.status(400).json({
-        error: 'No workspace ID(s) provided. Pass workspaceId/workspaceIds in body or set POSTMAN_WORKSPACE_IDS.'
-      });
-    }
-    
-    const result = await scheduler.runNow(workspaceIds);
-    
-    res.json({
-      success: true,
-      message: 'Sync job completed',
-      result
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 /**
  * GET /scheduler/status
@@ -58,8 +28,8 @@ export async function getStatus(req, res, next) {
       },
       state: {
         lastRun: state.lastRun,
-        collectionsTracked: Object.keys(state.collections).length,
-        collections: state.collections
+        sourcesTracked: Object.keys(state.sources).length,
+        sources: state.sources
       },
       recentJobs: recentJobs.map(job => ({
         id: job.id,
@@ -131,20 +101,4 @@ export function stopScheduler(req, res) {
   });
 }
 
-/**
- * POST /scheduler/reset
- * 
- * Reset all sync state
- */
-export async function resetState(req, res, next) {
-  try {
-    await syncState.resetState();
-    res.json({
-      success: true,
-      message: 'Sync state reset'
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 

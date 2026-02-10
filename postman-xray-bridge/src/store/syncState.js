@@ -1,61 +1,62 @@
 /**
  * Sync State Storage (PostgreSQL via Prisma)
  * 
- * Tracks the last synced run for each collection.
+ * Tracks the last synced run for each source (monitor or collection).
  * Also tracks sync jobs and individual run sync history.
  */
 
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client.ts';
-import config from '../config.js';
-
-// Initialize Prisma with PostgreSQL adapter
-const adapter = new PrismaPg({ connectionString: config.database.url });
-const prisma = new PrismaClient({ adapter });
+import { prisma } from '../../prisma/client.js';
 
 /**
- * Get last synced timestamp for a collection
- * @param {string} collectionUid - Collection UID
+ * Get last synced timestamp for a source
+ * @param {string} sourceId - Source ID (Monitor ID or Collection UID)
+ * @param {string} sourceType - Source type ('monitor' | 'collection_run')
  * @returns {Promise<string|null>} - Last synced run timestamp (ISO string) or null
  */
-export async function getLastSyncedTimestamp(collectionUid) {
+export async function getLastSyncedTimestamp(sourceId, sourceType) {
   const state = await prisma.syncState.findUnique({
-    where: { collectionUid }
+    where: {
+      sourceId_sourceType: { sourceId, sourceType }
+    }
   });
   return state?.lastRunTimestamp?.toISOString() || null;
 }
 
 /**
- * Update last synced state for a collection
- * @param {string} collectionUid - Collection UID
+ * Update last synced state for a source
+ * @param {string} sourceId - Source ID (Monitor ID or Collection UID)
+ * @param {string} sourceType - Source type ('monitor' | 'collection_run')
  * @param {string} runId - Run ID that was synced
- * @param {string} runTimestamp - The run's completedAt timestamp
+ * @param {string} runTimestamp - The run's finishedAt timestamp
  * @param {Object} metadata - Additional metadata
  */
-export async function updateLastSynced(collectionUid, runId, runTimestamp, metadata = {}) {
+export async function updateLastSynced(sourceId, sourceType, runId, runTimestamp, metadata = {}) {
   await prisma.syncState.upsert({
-    where: { collectionUid },
+    where: {
+      sourceId_sourceType: { sourceId, sourceType }
+    },
     update: {
       lastRunId: runId,
       lastRunTimestamp: runTimestamp ? new Date(runTimestamp) : null,
       testPlanKey: metadata.testPlanId,
-      collectionName: metadata.collectionName
+      sourceName: metadata.sourceName
     },
     create: {
-      collectionUid,
+      sourceId,
+      sourceType,
       lastRunId: runId,
       lastRunTimestamp: runTimestamp ? new Date(runTimestamp) : null,
       testPlanKey: metadata.testPlanId,
-      collectionName: metadata.collectionName
+      sourceName: metadata.sourceName
     }
   });
   
-  console.log(`[SyncState] Updated ${collectionUid} → lastRunTimestamp: ${runTimestamp}`);
+  console.log(`[SyncState] Updated ${sourceType}:${sourceId} → lastRunTimestamp: ${runTimestamp}`);
 }
 
 /**
- * Get full sync state (all collections)
- * @returns {Promise<Object>} - State object with collections map
+ * Get full sync state (all sources)
+ * @returns {Promise<Object>} - State object with sources map
  */
 export async function getFullState() {
   const states = await prisma.syncState.findMany();
@@ -63,19 +64,22 @@ export async function getFullState() {
     orderBy: { startedAt: 'desc' }
   });
   
-  const collections = {};
+  const sources = {};
   for (const state of states) {
-    collections[state.collectionUid] = {
+    const key = `${state.sourceType}:${state.sourceId}`;
+    sources[key] = {
+      sourceId: state.sourceId,
+      sourceType: state.sourceType,
+      sourceName: state.sourceName,
       lastRunId: state.lastRunId,
       lastRunTimestamp: state.lastRunTimestamp?.toISOString(),
-      testPlanId: state.testPlanKey,
-      collectionName: state.collectionName
+      testPlanId: state.testPlanKey
     };
   }
   
   return {
     lastRun: lastJob?.startedAt?.toISOString() || null,
-    collections
+    sources
   };
 }
 
@@ -113,17 +117,19 @@ export async function createSyncJob() {
 /**
  * Record a synced run within a job
  * @param {number} jobId - Job ID
- * @param {string} collectionUid - Collection UID
+ * @param {string} sourceId - Source ID (Monitor ID or Collection UID)
+ * @param {string} sourceType - Source type ('monitor' | 'collection_run')
  * @param {string} runId - Run ID
  * @param {string} status - 'success' or 'error'
  * @param {string|null} xrayExecKey - Xray test execution key (if successful)
  * @param {string|null} errorMessage - Error message (if failed)
  */
-export async function recordSyncRun(jobId, collectionUid, runId, status, xrayExecKey = null, errorMessage = null) {
+export async function recordSyncRun(jobId, sourceId, sourceType, runId, status, xrayExecKey = null, errorMessage = null) {
   await prisma.syncRun.create({
     data: {
       jobId,
-      collectionUid,
+      sourceId,
+      sourceType,
       runId,
       status,
       xrayExecKey,
@@ -184,9 +190,5 @@ export async function getRecentJobs(limit = 10) {
   });
 }
 
-/**
- * Disconnect Prisma client (for cleanup)
- */
-export async function disconnect() {
-  await prisma.$disconnect();
-}
+// Re-export disconnect from prisma client for convenience
+export { disconnect } from '../../prisma/client.js';
