@@ -17,7 +17,6 @@ import * as postmanClient from '../clients/postmanClient.js';
 import * as xrayClient from '../clients/xrayClient.js';
 import * as syncState from '../store/syncState.js';
 import { transformToXrayJson as transformMonitorResult } from '../transformers/monitorResultToXrayJson.js';
-import { prisma } from '../../prisma/client.js';
 import config from '../config.js';
 
 /**

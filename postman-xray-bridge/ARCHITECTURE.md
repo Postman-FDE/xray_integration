@@ -245,6 +245,184 @@ When a run fails to sync:
 
 ---
 
+## Parallelization
+
+The architecture is designed to support parallelization at multiple levels. Since this service is I/O-bound (HTTP calls, database queries), parallel execution significantly improves performance even though Node.js is single-threaded.
+
+### Why Parallelization Works in Node.js
+
+Node.js uses an event loop with non-blocking I/O. While JavaScript execution is single-threaded, I/O operations (HTTP requests, DB queries) can run concurrently. Multiple requests are sent simultaneously, and the event loop handles responses as they arrive.
+
+```
+Sequential:  [fetch1][wait][fetch2][wait][fetch3][wait]  → 3 seconds
+Parallel:    [fetch1]
+             [fetch2]  → all waiting concurrently        → 1 second
+             [fetch3]
+```
+
+### Parallelization Levels
+
+The service can be parallelized at three levels:
+
+```
+syncService.syncRuns()
+    │
+    └── Promise.all(collections.map(...))     ← Level 1: Collections
+            │
+            └── syncCollectionMonitors()
+                    │
+                    └── Promise.all(monitors.map(...))   ← Level 2: Monitors
+                            │
+                            └── syncSingleMonitor()
+                                    │
+                                    └── Promise.all(runs.map(...))   ← Level 3: Runs
+                                            │
+                                            └── syncSingleRun()
+```
+
+### Implementation Pattern
+
+**Service layer controls parallelization strategy. Jobs remain stateless and focused.**
+
+**Level 1 - Collections (in syncService.js):**
+```javascript
+// Replace for...of loop with Promise.all
+const collectionResults = await Promise.all(
+  xrayCollections.map(collection => 
+    syncMonitorRunsJob.syncCollectionMonitors({ collection, ... })
+  )
+);
+```
+
+**Level 2 - Monitors (in syncMonitorRunsJob.js):**
+```javascript
+const monitorResults = await Promise.all(
+  monitors.map(monitor => 
+    syncSingleMonitor({ monitor, ... })
+  )
+);
+```
+
+**Level 3 - Runs (in syncMonitorRunsJob.js):**
+```javascript
+const syncedRuns = await Promise.all(
+  runs.map(run => syncSingleRun({ run, ... }))
+);
+```
+
+### Adding Concurrency Limits
+
+If API rate limits require throttling, use `p-limit`:
+
+```javascript
+import pLimit from 'p-limit';
+const limit = pLimit(5); // Max 5 concurrent
+
+await Promise.all(
+  items.map(item => limit(() => processItem(item)))
+);
+```
+
+### Logging Considerations
+
+Parallel execution causes interleaved logs. Options:
+1. Accept interleaved logs (simplest)
+2. Add prefixes: `[Collection:X][Monitor:Y] Processing...`
+3. Buffer logs per-job and print at completion
+
+---
+
+## Async Jobs (Future)
+
+The architecture supports making sync jobs asynchronous (return immediately with job ID, poll for status).
+
+### Current Flow (Synchronous)
+
+```
+Client                    Controller              Service
+  │                           │                      │
+  │── POST /sync/run ────────▶│                      │
+  │                           │── syncRuns() ───────▶│
+  │                           │                      │ (processing...)
+  │                           │                      │ (5-30 seconds)
+  │                           │◀── results ──────────│
+  │◀── 200 { results } ───────│                      │
+```
+
+### Async Flow (Future)
+
+```
+Client                    Controller              Service
+  │                           │                      │
+  │── POST /sync/run ────────▶│                      │
+  │                           │── startSyncJob() ───▶│
+  │                           │◀── { jobId } ────────│
+  │◀── 202 { jobId } ─────────│                      │
+  │                           │         │ (background processing)
+  │── GET /jobs/:id/status ──▶│         ▼
+  │◀── { status: running } ───│   syncRuns() running
+  │                           │         │
+  │── GET /jobs/:id/status ──▶│         ▼
+  │◀── { status: complete } ──│   Job finished
+```
+
+### Implementation Approach
+
+**Controller (returns immediately):**
+```javascript
+export async function runSync(req, res) {
+  const jobId = await syncService.startSyncJob(req.body);
+  res.status(202).json({ 
+    jobId, 
+    status: 'started',
+    statusUrl: `/jobs/${jobId}/status`
+  });
+}
+```
+
+**Service (spawns background work):**
+```javascript
+export async function startSyncJob(params) {
+  const job = await syncState.createSyncJob();
+  
+  // Fire and forget - don't await
+  processInBackground(job.id, params);
+  
+  return job.id;
+}
+
+async function processInBackground(jobId, params) {
+  try {
+    await syncMonitorRunsJob.syncCollectionMonitors(...);
+    await syncState.completeSyncJob(jobId, 'success');
+  } catch (error) {
+    await syncState.completeSyncJob(jobId, 'failed');
+  }
+}
+```
+
+**Status endpoint:**
+```javascript
+// GET /jobs/:jobId/status
+export async function getJobStatus(req, res) {
+  const job = await syncState.getSyncJob(req.params.jobId);
+  res.json({
+    jobId: job.id,
+    status: job.status,
+    progress: { synced: job.runsSuccess, failed: job.runsFailed }
+  });
+}
+```
+
+### Why This Works
+
+1. **Controllers are thin** - Can return immediately without blocking
+2. **Service manages lifecycle** - Creates job record, spawns work, tracks status
+3. **Jobs are stateless** - Can run in background, update their own status
+4. **Database tracks progress** - `SyncJob` table already exists for status
+
+---
+
 ## Adding New Features
 
 ### Adding a New Sync Source (e.g., Collection Runs)
