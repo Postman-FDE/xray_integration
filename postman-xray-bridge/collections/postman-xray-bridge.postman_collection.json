@@ -151,7 +151,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["sync", "run"]
             },
-            "description": "Sync monitor runs from real Postman Monitor APIs to Xray.\n\n**Flow:**\n1. Fetch all collections from workspace (Postman API)\n2. Filter to collections with `test-plan-id` variable (Xray-linked)\n3. Get monitors for each collection (Monitor API)\n4. Fetch runs since last sync (respects SYNC_BASE_TIME)\n5. Transform and push to Xray\n\n**Body parameters:**\n- `workspaceId` (optional): Workspace ID. Uses `POSTMAN_WORKSPACE_IDS` from env if not provided.\n- `monitorId` (optional): Specific monitor/jobtemplate ID to sync. Skips collection lookup if provided.\n\n**Environment variables:**\n- `POSTMAN_WORKSPACE_IDS`: Default workspace(s) to sync\n- `SYNC_BASE_TIME`: Only sync runs after this timestamp\n- `MONITOR_API_URL`: Internal monitor API base URL\n- `DRY_RUN`: If true, pushes to Xray but skips DB updates"
+            "description": "Sync monitor runs from real Postman Monitor APIs to Xray.\n\n**Flow:**\n1. Fetch all collections from workspace (Postman API)\n2. Filter to collections with `test-plan-id` variable (Xray-linked)\n3. Get monitors for each collection (Monitor API)\n4. Fetch runs since last sync (respects SYNC_BASE_TIME)\n5. Transform and push to Xray\n\n**Body parameters:**\n- `workspaceId` (optional): Workspace ID. Uses `POSTMAN_WORKSPACE_IDS` from env if not provided.\n\n**Environment variables:**\n- `POSTMAN_WORKSPACE_IDS`: Default workspace(s) to sync\n- `SYNC_BASE_TIME`: Only sync runs after this timestamp\n- `NEWMAN_REMOTE_API_URL`: Internal monitor API base URL"
           },
           "response": []
         },
@@ -180,34 +180,6 @@
               "path": ["sync", "run"]
             },
             "description": "Sync all Xray-linked collections in a specific workspace."
-          },
-          "response": []
-        },
-        {
-          "name": "Monitor Runs (specific monitor)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"monitorId\": \"your-monitor-jobtemplate-id\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/sync/run",
-              "host": ["{{baseUrl}}"],
-              "path": ["sync", "run"]
-            },
-            "description": "Sync a specific monitor by its jobtemplate ID. Skips the workspace/collection lookup."
           },
           "response": []
         },

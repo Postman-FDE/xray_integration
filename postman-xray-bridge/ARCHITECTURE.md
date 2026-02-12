@@ -457,4 +457,3 @@ Key variables:
 | `NEWMAN_REMOTE_API_URL` | Yes | Monitor API (newman-remote-api) URL |
 | `X_ACCESS_TOKEN` | Yes | Auth token for Monitor API |
 | `SYNC_BASE_TIME` | No | Only sync runs after this time |
-| `DRY_RUN` | No | Push to Xray but skip DB updates |

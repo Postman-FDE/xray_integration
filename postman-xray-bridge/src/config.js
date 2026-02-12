@@ -22,8 +22,7 @@
  *   SYNC_CRON - Cron expression (default: every hour)
  *   SYNC_ENABLED - Enable auto-sync on startup (default: false)
  *   SYNC_BASE_TIME - Only sync runs after this timestamp
- *   DRY_RUN - Push to Xray but don't update DB (default: false)
- *   PORT - Server port (default: 4000)
+ *   PORT - Server port (default: 3003)
  */
 
 export const config = {
@@ -72,7 +71,6 @@ export const config = {
   sync: {
     enabled: process.env.SYNC_ENABLED === 'true',
     cronExpression: process.env.SYNC_CRON || '0 * * * *',
-    dryRun: process.env.DRY_RUN === 'true',
     baseTime: process.env.SYNC_BASE_TIME || null,
   },
 

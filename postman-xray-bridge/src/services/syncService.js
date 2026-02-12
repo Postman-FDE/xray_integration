@@ -8,43 +8,29 @@
 import * as postmanClient from '../clients/postmanClient.js';
 import * as syncState from '../store/syncState.js';
 import * as syncMonitorRunsJob from '../jobs/syncMonitorRunsJob.js';
-import config from '../config.js';
 
 /**
- * Sync runs for a workspace or specific monitor
+ * Sync runs for a workspace
  * 
  * This is the main entry point called by:
  * - Controller (POST /sync/run)
  * - Scheduler (cron trigger)
  * 
  * @param {Object} options
- * @param {string} [options.workspaceId] - Workspace ID to sync all collections
- * @param {string} [options.monitorId] - Specific monitor ID to sync
+ * @param {string} options.workspaceId - Workspace ID to sync all collections
  * @returns {Promise<Object>} - Sync results
  */
 export async function syncRuns(options = {}) {
-  const { workspaceId, monitorId } = options;
-  const isDryRun = config.sync.dryRun;
+  const { workspaceId } = options;
 
   console.log('\n════════════════════════════════════════════════════════════════');
   console.log('SYNC RUN JOB');
   console.log('════════════════════════════════════════════════════════════════');
   console.log(`Time: ${new Date().toISOString()}`);
-  
-  if (monitorId) {
-    console.log(`Monitor: ${monitorId}`);
-  } else {
-    console.log(`Workspace: ${workspaceId}`);
-  }
-
-  if (isDryRun) {
-    console.log('Mode: DRY RUN (pushes to Xray, but no DB updates)');
-  } else {
-    console.log('Mode: LIVE RUN (pushes to Xray and updates DB)');
-  }
+  console.log(`Workspace: ${workspaceId}`);
 
   // Create sync job record
-  const jobId = isDryRun ? null : await syncState.createSyncJob();
+  const jobId = await syncState.createSyncJob();
 
   const results = {
     collections: [],
@@ -54,7 +40,7 @@ export async function syncRuns(options = {}) {
 
   try {
     // Step 1: Get Xray-linked collections
-    const xrayCollections = await getXrayLinkedCollections({ workspaceId, monitorId });
+    const xrayCollections = await getXrayLinkedCollections(workspaceId);
 
     // Step 2: For each collection, sync monitors (call job)
     console.log('\n── Step 2: Syncing Monitor Runs ──');
@@ -63,8 +49,6 @@ export async function syncRuns(options = {}) {
       try {
         const collectionResult = await syncMonitorRunsJob.syncCollectionMonitors({
           collection,
-          monitorId,
-          isDryRun,
           jobId
         });
         results.collections.push(collectionResult);
@@ -83,25 +67,18 @@ export async function syncRuns(options = {}) {
     }
 
     // Complete job
-    if (jobId) {
-      let jobStatus = 'success';
-      if (results.totalFailed > 0 && results.totalSynced > 0) jobStatus = 'partial';
-      else if (results.totalFailed > 0 && results.totalSynced === 0) jobStatus = 'failed';
-      await syncState.completeSyncJob(jobId, jobStatus);
-    }
+    let jobStatus = 'success';
+    if (results.totalFailed > 0 && results.totalSynced > 0) jobStatus = 'partial';
+    else if (results.totalFailed > 0 && results.totalSynced === 0) jobStatus = 'failed';
+    await syncState.completeSyncJob(jobId, jobStatus);
 
     console.log('\n════════════════════════════════════════════════════════════════');
-    if (isDryRun) {
-      console.log(`✓ DRY RUN COMPLETE - ${results.totalSynced} run(s) would be synced`);
-    } else {
-      console.log(`✓ SYNC COMPLETE - ${results.totalSynced} synced, ${results.totalFailed} failed`);
-    }
+    console.log(`✓ SYNC COMPLETE - ${results.totalSynced} synced, ${results.totalFailed} failed`);
     console.log('════════════════════════════════════════════════════════════════\n');
 
     return {
       ...results,
-      jobId,
-      dryRun: isDryRun
+      jobId
     };
 
   } catch (error) {
@@ -114,19 +91,12 @@ export async function syncRuns(options = {}) {
 /**
  * Get Xray-linked collections for syncing
  * 
- * @param {Object} options
- * @param {string} [options.workspaceId] - Workspace ID
- * @param {string} [options.monitorId] - If provided, skip collection lookup
+ * @param {string} workspaceId - Workspace ID
  * @returns {Promise<Array>} - Collections to sync
  */
-async function getXrayLinkedCollections({ workspaceId, monitorId }) {
-  if (monitorId) {
-    console.log('\n── Skipping collection lookup (specific monitor provided) ──');
-    return [{ uid: null, name: 'Direct Monitor Sync' }];
-  }
-  
+async function getXrayLinkedCollections(workspaceId) {
   if (!workspaceId) {
-    throw new Error('workspaceId or monitorId is required');
+    throw new Error('workspaceId is required');
   }
 
   console.log('\n── Step 1: Fetching Xray-linked Collections ──');

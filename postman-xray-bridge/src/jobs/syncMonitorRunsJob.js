@@ -24,12 +24,10 @@ import config from '../config.js';
  * 
  * @param {Object} params
  * @param {Object} params.collection - Collection object (with items, variables)
- * @param {string} [params.monitorId] - Specific monitor ID to sync
- * @param {boolean} params.isDryRun - If true, push to Xray but skip DB updates
  * @param {number} params.jobId - Sync job ID for tracking
  * @returns {Object} - { collectionUid, collectionName, testPlanId, runsSynced, runsFailed, monitors[] }
  */
-export async function syncCollectionMonitors({ collection, monitorId, isDryRun, jobId }) {
+export async function syncCollectionMonitors({ collection, jobId }) {
   const collectionUid = collection.uid;
   const collectionName = collection.name;
   const testPlanId = postmanClient.getTestPlanId(collection);
@@ -39,20 +37,14 @@ export async function syncCollectionMonitors({ collection, monitorId, isDryRun, 
   // Build folderMap from collection items (maps request IDs to folder names with test keys)
   const folderMap = postmanClient.buildFolderMap(collection);
   
-  let monitors = [];
-  
-  if (monitorId) {
-    // Sync specific monitor
-    console.log(`Syncing monitor: ${monitorId}`);
-    monitors = [{ id: monitorId, name: 'Direct Monitor' }];
-  } else if (collectionUid) {
-    // Get all monitors for this collection 
-    monitors = await monitorClient.getMonitors({ collectionId: collectionUid });// TODO: Should this be postmanClient?
-    console.log(`Found ${monitors.length} monitor(s) for collection`);
-  } else {
+  if (!collectionUid) {
     console.log('No collection UID, skipping');
     return { collectionUid, collectionName, testPlanId, runsSynced: 0, runsFailed: 0, monitors: [] };
   }
+
+  // Get all monitors for this collection 
+  const monitors = await monitorClient.getMonitors({ collectionId: collectionUid }); // TODO: Should this be postmanClient?
+  console.log(`Found ${monitors.length} monitor(s) for collection`);
   
   if (monitors.length === 0) {
     return { collectionUid, collectionName, testPlanId, runsSynced: 0, runsFailed: 0, monitors: [] };
@@ -67,7 +59,6 @@ export async function syncCollectionMonitors({ collection, monitorId, isDryRun, 
       monitor,
       testPlanId,
       folderMap,
-      isDryRun,
       jobId
     });
     monitorResults.push(result);
@@ -93,8 +84,8 @@ export async function syncCollectionMonitors({ collection, monitorId, isDryRun, 
  * 2. Sort oldest-first for monotonic timestamp progression
  * 3. For each job: fetch runs → fetch logs → sync → checkpoint
  */
-async function syncSingleMonitor({ monitor, testPlanId, folderMap, isDryRun, jobId }) {
-  const monitorId = monitor.id; // TODO: 
+async function syncSingleMonitor({ monitor, testPlanId, folderMap, jobId }) {
+  const monitorId = monitor.id;
   const monitorName = monitor.name;
 
   console.log(`\n📊 Monitor: ${monitorName || monitorId}`);
@@ -132,13 +123,12 @@ async function syncSingleMonitor({ monitor, testPlanId, folderMap, isDryRun, job
         jobName: job.name
       };
       
-      const runResult = await syncSingleRun({ // TODO: Verify, clean up. check if we can parallelize multiple runs. 
+      const runResult = await syncSingleRun({ // TODO: Verify, clean up. check if we can parallelize multiple runs.
         sourceType: 'monitor',
         sourceId: monitorId,
         sourceName: monitorName,
         testPlanId,
         run: runWithContext,
-        isDryRun,
         jobId,
         folderMap
       });
@@ -164,7 +154,6 @@ async function syncSingleRun({
   sourceName,
   testPlanId,
   run,
-  isDryRun,
   jobId,
   folderMap
 }) {
@@ -179,12 +168,7 @@ async function syncSingleRun({
     const xrayResult = await xrayClient.importXrayJson(xrayPayload);
     console.log(`✓ Run ${run.id} → ${xrayResult.key} (${xrayPayload.tests?.length || 0} tests)`);
 
-    const syncTimestamp =  run.finishedAt || new Date().toISOString();
-
-    if (isDryRun) {
-      console.log('DRY RUN: Skipping DB update');
-      return { runId: run.id, status: 'synced_dry_run', xrayTestExecKey: xrayResult.key };
-    }
+    const syncTimestamp = run.finishedAt || new Date().toISOString();
 
     // Update sync state
     await syncState.updateLastSynced(sourceId, sourceType, run.id, syncTimestamp, {
@@ -192,17 +176,13 @@ async function syncSingleRun({
       sourceName
     });
     
-    if (jobId) {
-      await syncState.recordSyncRun(jobId, sourceId, sourceType, run.id, 'success', xrayResult.key, null);
-    }
+    await syncState.recordSyncRun(jobId, sourceId, sourceType, run.id, 'success', xrayResult.key, null);
     
     return { runId: run.id, status: 'synced', xrayTestExecKey: xrayResult.key };
 
   } catch (error) {
     console.error(`✗ Run ${run.id} failed: ${error.message}`);
-    if (jobId) {
-      await syncState.recordSyncRun(jobId, sourceId, sourceType, run.id, 'error', null, error.message);
-    }
+    await syncState.recordSyncRun(jobId, sourceId, sourceType, run.id, 'error', null, error.message);
     return { runId: run.id, status: 'error', error: error.message };
   }
 }

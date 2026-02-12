@@ -213,39 +213,26 @@ export async function checkStatus(req, res, next) {
  * 
  * Body:
  * - workspaceId: Workspace ID (uses env default if not provided)
- * - monitorId: Specific monitor/jobtemplate ID (optional, skips collection lookup)
  */
 export async function runSync(req, res, next) {
   try {
-    const { 
-      workspaceId,
-      monitorId
-    } = req.body;
+    const { workspaceId } = req.body;
 
     // Use provided workspaceId, or fall back to first configured workspace
     const effectiveWorkspaceId = workspaceId || config.postman.workspaceIds?.[0];
 
-    if (!monitorId && !effectiveWorkspaceId) {
+    if (!effectiveWorkspaceId) {
       throw new ValidationError('workspaceId is required (or set POSTMAN_WORKSPACE_IDS in env)');
     }
 
-    const result = await syncService.syncRuns({ 
-      workspaceId: effectiveWorkspaceId,
-      monitorId
-    });
+    const result = await syncService.syncRuns({ workspaceId: effectiveWorkspaceId });
 
     res.json({
       success: true,
-      message: result.dryRun ? 'Dry run completed' : 'Sync completed',
+      message: 'Sync completed',
       result
     });
   } catch (error) {
-    if (error.message.includes('Not implemented')) {
-      return res.status(501).json({
-        error: 'Not implemented',
-        message: error.message
-      });
-    }
     next(error);
   }
 }

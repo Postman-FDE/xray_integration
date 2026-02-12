@@ -71,7 +71,6 @@ X_ACCESS_TOKEN=your-monitor-api-access-token
 SYNC_ENABLED=false           # Auto-start scheduler
 SYNC_CRON=0 * * * *          # Cron expression (every hour)
 SYNC_BASE_TIME=2026-01-01T00:00:00Z  # Only sync runs after this time
-DRY_RUN=false                # Push to Xray but skip DB updates
 
 # Server
 PORT=3003
@@ -114,11 +113,6 @@ PORT=3003
 curl -X POST http://localhost:3003/sync/run \
   -H "Content-Type: application/json" \
   -d '{"workspaceId": "your-workspace-id"}'
-
-# Sync specific monitor
-curl -X POST http://localhost:3003/sync/run \
-  -H "Content-Type: application/json" \
-  -d '{"monitorId": "your-monitor-id"}'
 ```
 
 ### Scheduled Sync
