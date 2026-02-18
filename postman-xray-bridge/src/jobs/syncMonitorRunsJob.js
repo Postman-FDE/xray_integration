@@ -159,7 +159,7 @@ async function syncSingleRun({
 }) {
   try {
     // Fetch results from monitor API
-    const results = await monitorClient.getRunSummary(sourceId, run.id);
+    const results = await monitorClient.getRunResults(sourceId, run.id);
 
     // Transform to Xray format
     const xrayPayload = transformMonitorResult(results, folderMap, { testPlanKey: testPlanId });

@@ -1,9 +1,9 @@
 /**
  * Monitor Result to Xray JSON Transformer
  * 
- * Converts Postman Monitor run summary (from newman-remote-api /summary endpoint) to Xray JSON format.
+ * Converts Postman Monitor run results (from newman-remote-api /results endpoint) to Xray JSON format.
  * 
- * This transformer works with the new simplified response structure:
+ * This transformer works with the simplified response structure:
  * - run: { id, status, startedAt, finishedAt, duration }
  * - monitor: { id, name }
  * - collection: { id, name }
@@ -14,9 +14,9 @@
 import { Buffer } from 'buffer';
 
 /**
- * Transform Monitor run summary to Xray JSON format
+ * Transform Monitor run results to Xray JSON format
  * 
- * @param {Object} runSummary - Monitor run summary from /runs/:runId/summary
+ * @param {Object} runSummary - Monitor run results from /runs/:runId/results
  * @param {Object} folderMap - Map of request ID to folder name (contains test keys like "PF-52 | ...")
  * @param {Object} options - Additional options
  * @param {string} options.testPlanKey - Test plan key (e.g., "PF-141")
@@ -65,7 +65,7 @@ export function transformToXrayJson(runSummary, folderMap = {}, options = {}) {
 /**
  * Extract test results from requests, grouped by test key
  * 
- * @param {Array} requests - Array of request objects from run summary
+ * @param {Array} requests - Array of request objects from run results
  * @param {Object} folderMap - Map of request ID to folder name (contains test keys)
  * @returns {Array} - Array of Xray test results
  */
@@ -84,11 +84,11 @@ function extractTestResults(requests, folderMap = {}) {
   const grouped = {};
   
   for (const request of requests) {
-    // requestId from /summary has format "uuid-N" where N is iteration number
+    // requestId from /results has format "uuid-N" where N is iteration number
     // Strip the suffix to get the collection item ID for folderMap lookup
     const baseRequestId = request.requestId?.replace(/-\d+$/, '') || null;
     
-    // Look up folder by requestId (collection item ID) from the /summary response
+    // Look up folder by requestId (collection item ID) from the /results response
     const folderName = folderMap[baseRequestId] || null;
     
     // DEBUG: Log each lookup

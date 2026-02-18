@@ -177,26 +177,26 @@ export async function getJobRuns(jobId, options = {}) {
 }
 
 /**
- * Get detailed results/log for a run (legacy verbose format)
+ * Get detailed log for a run (legacy verbose format)
  * 
  * @param {string} monitorId - Monitor ID (not used, kept for interface consistency)
  * @param {string} runId - Run ID
  * @returns {Promise<Object>} - Run log with execution details
  */
-export async function getRunResults(monitorId, runId) {
+export async function getRunLog(monitorId, runId) {
   const result = await monitorFetch(`/runs/${runId}/log`);
   return result;
 }
 
 /**
- * Get run summary (new compact format with structured assertions)
+ * Get run results (compact format with structured assertions)
  * 
  * @param {string} monitorId - Monitor ID (not used, kept for interface consistency)
  * @param {string} runId - Run ID
- * @returns {Promise<Object>} - Run summary with requests and assertions
+ * @returns {Promise<Object>} - Run results with requests and assertions
  */
-export async function getRunSummary(monitorId, runId) {
-  const result = await monitorFetch(`/runs/${runId}/summary`);
+export async function getRunResults(monitorId, runId) {
+  const result = await monitorFetch(`/runs/${runId}/results`);
   return result;
 }
 
