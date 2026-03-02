@@ -16,7 +16,7 @@ import * as monitorClient from '../clients/monitorClient.js';
 import * as postmanClient from '../clients/postmanClient.js';
 import * as xrayClient from '../clients/xrayClient.js';
 import * as syncState from '../store/syncState.js';
-import { transformToXrayJson as transformMonitorResult } from '../transformers/monitorResultToXrayJson.js';
+import { transformToXrayJson as transformMonitorLog } from '../transformers/monitorJsonToXrayJson.js';
 import config from '../config.js';
 
 /**
@@ -112,7 +112,7 @@ async function syncSingleMonitor({ monitor, testPlanId, folderMap, jobId }) {
   for (const job of jobs) {
     jobsProcessed++;
     // Fetch runs for this job
-    const runs = await monitorClient.getJobRuns(job.id);
+    const runs = await monitorClient.getJobRuns(monitorId, job.id);
     
     for (const run of runs) {
       console.log(`Processing job ${jobsProcessed}/${jobs.length}`);
@@ -158,11 +158,10 @@ async function syncSingleRun({
   folderMap
 }) {
   try {
-    // Fetch results from monitor API
-    const results = await monitorClient.getRunResults(sourceId, run.id);
+    const runLog = await monitorClient.getRunLog(sourceId, run.id);
 
-    // Transform to Xray format
-    const xrayPayload = transformMonitorResult(results, folderMap, { testPlanKey: testPlanId });
+    // Transform to Xray format using log-based transformer
+    const xrayPayload = transformMonitorLog(runLog, folderMap, { testPlanKey: testPlanId });
 
     // Push to Xray
     const xrayResult = await xrayClient.importXrayJson(xrayPayload);

@@ -1,34 +1,29 @@
 /**
- * Monitor Service
+ * Monitor Client
  * 
- * Fetches monitor runs from Postman internal APIs (newman-remote-api).
+ * Fetches monitor data from the Postman public API.
+ * All endpoints use X-Api-Key authentication via config.postman.apiKey.
  * 
- * API Hierarchy:
- *   jobtemplate = monitor configuration
- *   job = a scheduled/triggered execution of the monitor
- *   run = actual execution result
- *   log = detailed execution results (test assertions, etc.)
- * 
- * Endpoints:
- *   GET /jobtemplates?collection=xxx&active=true    - List monitors
- *   GET /jobtemplates/:jobTemplateId/jobs           - List jobs for a monitor
- *   GET /jobs/:jobId/runs                           - List runs for a job
- *   GET /runs/:runId/log                            - Get run log/details
+ * Public API endpoints:
+ *   GET /monitors?collectionUid=xxx               - List monitors for a collection
+ *   GET /monitors/:monitorId/executions            - List executions for a monitor
+ *   GET /monitors/:monitorId/executions/:id/runs   - List runs for an execution
+ *   GET /monitors/:monitorId/runs/:runId/results   - Get run results (trimmed logs)
  */
 
 import config from '../config.js';
 
 /**
- * Make authenticated request to Monitor API
+ * Make authenticated request to Postman public API
  */
-async function monitorFetch(endpoint, options = {}) {
-  const url = `${config.monitor.apiUrl}${endpoint}`;
+async function apiFetch(endpoint, options = {}) {
+  const url = `${config.postman.apiUrl}${endpoint}`;
   
   try {
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
-        'X-Access-Token': config.monitor.accessToken,
+        'X-Api-Key': config.postman.apiKey,
         ...options.headers
       },
       ...options
@@ -42,55 +37,38 @@ async function monitorFetch(endpoint, options = {}) {
     return response.json();
   } catch (error) {
     if (error.cause?.code === 'ECONNREFUSED') {
-      throw new Error(`Cannot connect to Monitor API at ${config.monitor.apiUrl} - is the service running?`);
+      throw new Error(`Cannot connect to Postman API at ${config.postman.apiUrl} - is the service running?`);
     }
     throw error;
   }
 }
 
 /**
- * Get monitors (jobtemplates) for a collection or workspace
+ * Get monitors for a collection
  * 
  * @param {Object} options - Query options
- * @param {string} options.collectionId - Collection ID to filter by
- * @param {string} options.workspaceId - Workspace ID (not directly supported by API, see note)
- * @param {boolean} options.active - Only active monitors (default: true)
+ * @param {string} options.collectionId - Collection UID to filter by
  * @returns {Promise<Array>} - List of monitors
- * 
- * Note: The API filters by collection, not workspace. 
- * To get all monitors in a workspace, we'd need to first list collections in the workspace.
- * For now, collectionId is required.
  */
 export async function getMonitors(options = {}) {
-  const { collectionId, active = true } = options;
+  const { collectionId } = options;
   
   if (!collectionId) {
-    // TODO: If only workspaceId is provided, we need to:
-    // 1. List collections in workspace
-    // 2. For each collection, get monitors
-    throw new Error('collectionId is required - workspace-level monitor listing not implemented yet');
+    throw new Error('collectionId is required');
   }
   
-  const params = new URLSearchParams();
-  params.set('collection', collectionId);
-  if (active) params.set('active', 'true');
-  
-  const result = await monitorFetch(`/jobtemplates?${params}`);
-  
-  // API returns { data: [...] } or just [...]
-  return result.data || result;
+  const result = await apiFetch(`/monitors?collectionUid=${encodeURIComponent(collectionId)}`);
+  return result.monitors || [];
 }
 
 /**
- * Get jobs for a monitor (jobtemplate)
+ * Get executions (jobs) for a monitor
  * 
- * Supports pagination (25 per page) and timestamp-based filtering via `goto`
- * 
- * @param {string} monitorId - Monitor/JobTemplate ID
+ * @param {string} monitorId - Monitor ID
  * @param {Object} options - Query options
  * @param {number} options.page - Page number (25 results per page)
- * @param {string} options.goto - Jump to jobs around this timestamp
- * @returns {Promise<Array>} - List of jobs
+ * @param {string} options.goto - Jump to executions around this timestamp
+ * @returns {Promise<Object>} - { data: [...], meta: { page, nextPage, prevPage } }
  */
 export async function getMonitorJobs(monitorId, options = {}) {
   const { page, goto } = options;
@@ -100,22 +78,21 @@ export async function getMonitorJobs(monitorId, options = {}) {
   if (goto) params.set('goto', goto);
   
   const queryString = params.toString();
-  const endpoint = `/jobtemplates/${monitorId}/jobs${queryString ? `?${queryString}` : ''}`;
+  const endpoint = `/monitors/${monitorId}/executions${queryString ? `?${queryString}` : ''}`;
   
-  const result = await monitorFetch(endpoint);
-  return result.data || result;
+  const result = await apiFetch(endpoint);
+  return result;
 }
 
 /**
- * Get ALL jobs for a monitor, handling pagination
+ * Get ALL executions for a monitor, handling pagination
  * 
- * Returns jobs sorted OLDEST FIRST for proper checkpoint progression.
- * (API returns newest-first, we reverse for monotonic timestamp updates)
+ * Returns executions sorted OLDEST FIRST for proper checkpoint progression.
  * 
- * @param {string} monitorId - Monitor/JobTemplate ID  
+ * @param {string} monitorId - Monitor ID
  * @param {Object} options - Query options
- * @param {string} options.sinceTimestamp - Only get jobs after this timestamp
- * @returns {Promise<Array>} - All jobs, sorted oldest-first
+ * @param {string} options.sinceTimestamp - Only get executions after this timestamp
+ * @returns {Promise<Array>} - All executions, sorted oldest-first
  */
 export async function getAllMonitorJobs(monitorId, options = {}) {
   const { sinceTimestamp } = options;
@@ -126,7 +103,9 @@ export async function getAllMonitorJobs(monitorId, options = {}) {
   let hasMore = true;
   
   while (hasMore) {
-    const jobs = await getMonitorJobs(monitorId, { page });
+    const result = await getMonitorJobs(monitorId, { page });
+    const jobs = result.data || [];
+    const meta = result.meta || {};
     
     if (jobs.length === 0) {
       hasMore = false;
@@ -136,7 +115,6 @@ export async function getAllMonitorJobs(monitorId, options = {}) {
     for (const job of jobs) {
       const jobDate = new Date(job.finishedAt || job.createdAt);
       
-      // Jobs are sorted by createdAt desc, so once we hit older jobs, stop
       if (sinceDate && jobDate <= sinceDate) {
         hasMore = false;
         break;
@@ -145,58 +123,42 @@ export async function getAllMonitorJobs(monitorId, options = {}) {
       allJobs.push(job);
     }
     
-    // If we got less than 25, we've reached the end
-    if (jobs.length < 25) {
-      hasMore = false;
-    }
-    
-    page++;
+    hasMore = hasMore && meta.nextPage != null;
+    page = meta.nextPage || page + 1;
   }
   
-  // Sort oldest-first for proper checkpoint progression
-  // This ensures timestamp updates are monotonically increasing
   allJobs.sort((a, b) => {
     const dateA = new Date(a.finishedAt || a.createdAt);
     const dateB = new Date(b.finishedAt || b.createdAt);
-    return dateA - dateB;  // Ascending (oldest first)
+    return dateA - dateB;
   });
   
   return allJobs;
 }
 
 /**
- * Get runs for a job
+ * Get runs for an execution
  * 
- * @param {string} jobId - Job ID
- * @param {Object} options - Query options
+ * @param {string} monitorId - Monitor ID
+ * @param {string} executionId - Execution (job) ID
  * @returns {Promise<Array>} - List of runs
  */
-export async function getJobRuns(jobId, options = {}) {
-  const result = await monitorFetch(`/jobs/${jobId}/runs`);
-  return result.data || result;
+export async function getJobRuns(monitorId, executionId) {
+  const result = await apiFetch(`/monitors/${monitorId}/executions/${executionId}/runs`);
+  return result.data || [];
 }
 
 /**
- * Get detailed log for a run (legacy verbose format)
+ * Get run results (trimmed logs with beforeItem + assertion events)
  * 
- * @param {string} monitorId - Monitor ID (not used, kept for interface consistency)
+ * Use with monitorJsonToXrayJson.js transformer.
+ * 
+ * @param {string} monitorId - Monitor ID
  * @param {string} runId - Run ID
- * @returns {Promise<Object>} - Run log with execution details
+ * @returns {Promise<Object>} - Run results with trimmed log events
  */
 export async function getRunLog(monitorId, runId) {
-  const result = await monitorFetch(`/runs/${runId}/log`);
-  return result;
-}
-
-/**
- * Get run results (compact format with structured assertions)
- * 
- * @param {string} monitorId - Monitor ID (not used, kept for interface consistency)
- * @param {string} runId - Run ID
- * @returns {Promise<Object>} - Run results with requests and assertions
- */
-export async function getRunResults(monitorId, runId) {
-  const result = await monitorFetch(`/runs/${runId}/results`);
+  const result = await apiFetch(`/monitors/${monitorId}/runs/${runId}/results`);
   return result;
 }
 
@@ -207,8 +169,6 @@ export async function getRunResults(monitorId, runId) {
  * @returns {string|null} - Test plan ID or null
  */
 export function getTestPlanId(monitor) {
-  // Check monitor's collection variables for test-plan-id
-  // The structure depends on how the monitor stores collection data
   const collection = monitor.collection || {};
   const variable = collection.variable?.find(v => v.key === 'test-plan-id');
   return variable?.value || null;

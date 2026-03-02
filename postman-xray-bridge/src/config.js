@@ -13,8 +13,6 @@
  *   POSTMAN_API_URL - Postman API base URL (default: https://api.getpostman.com)
  *   POSTMAN_WORKSPACE_IDS - Comma-separated workspace IDs (e.g., ws-id-1,ws-id-2)
  *   POSTMAN_MOCK_URL - Mock API URL for testing
- *   MONITOR_API_URL - Monitor/Newman API URL (default: http://localhost:8080)
- *   X_ACCESS_TOKEN - Auth token for Monitor API
  *   COLLECTION_RUN_API_URL - Collection Run API URL (default: http://localhost:8081)
  *   JIRA_EMAIL - Jira email for API auth
  *   JIRA_API_TOKEN - Jira API token
@@ -54,12 +52,6 @@ export const config = {
       .split(',')
       .map(id => id.trim())
       .filter(id => id.length > 0),
-  },
-
-  // Monitor API settings (newman-remote-api)
-  monitor: {
-    apiUrl: process.env.NEWMAN_REMOTE_API_URL || 'http://localhost:8080',
-    accessToken: process.env.X_ACCESS_TOKEN || '',
   },
 
   // Collection Run API settings (history-service)
