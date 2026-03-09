@@ -1,0 +1,17 @@
+node_modules
+.env
+.env.local
+uploads
+test-results
+data
+logs
+*.log
+.DS_Store
+.git
+.gitignore
+docs
+collections
+scripts
+ARCHITECTURE.md
+README.md
+src/generated

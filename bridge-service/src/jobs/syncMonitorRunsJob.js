@@ -120,7 +120,8 @@ async function syncSingleMonitor({ monitor, testPlanId, folderMap, jobId }) {
       const runWithContext = {
         ...run,
         jobId: job.id,
-        jobName: job.name
+        jobName: job.name,
+        jobFinishedAt: job.finishedAt
       };
       
       const runResult = await syncSingleRun({ // TODO: Verify, clean up. check if we can parallelize multiple runs.
@@ -167,7 +168,7 @@ async function syncSingleRun({
     const xrayResult = await xrayClient.importXrayJson(xrayPayload);
     console.log(`✓ Run ${run.id} → ${xrayResult.key} (${xrayPayload.tests?.length || 0} tests)`);
 
-    const syncTimestamp = run.finishedAt || new Date().toISOString();
+    const syncTimestamp = run.jobFinishedAt || run.finishedAt || new Date().toISOString();
 
     // Update sync state
     await syncState.updateLastSynced(sourceId, sourceType, run.id, syncTimestamp, {

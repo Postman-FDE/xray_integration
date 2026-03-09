@@ -1,38 +1,35 @@
-# Postman-Xray-Bridge
+# Bridge Service
 
 A bridge service that syncs Postman Monitor run results to Jira Xray.
 
 ## Quick Start
 
 ```bash
-# 1. Clone and install
+# 1. Clone and configure
 git clone <repo>
-cd postman-xray-bridge
-npm install
-
-# 2. Set up environment
+cd bridge-service
 cp .env.example .env
 # Edit .env with your credentials (see Configuration below)
 
-# 3. Start database
+# 2. Start (bridge service + database)
 docker-compose up -d
 
-# 4. Initialize database
-npx prisma db push
-npx prisma generate
+# 3. Verify
+curl http://localhost:3003/health
 
-# 5. Start service
-npm run dev
+# 4. Trigger a sync
+curl -X POST http://localhost:3003/sync/run \
+  -H "Content-Type: application/json" \
+  -d '{"workspaceId": "your-workspace-id"}'
 ```
 
-Service runs at `http://localhost:3003`
+Database tables are created automatically on startup.
 
 ---
 
 ## Prerequisites
 
-- Node.js 18+ (Node.js 24+ recommended for native TypeScript)
-- Docker (for PostgreSQL)
+- Docker and Docker Compose
 - Xray Cloud API credentials
 - Postman API key
 
@@ -45,36 +42,38 @@ Copy `.env.example` to `.env` and configure:
 ### Required
 
 ```bash
-# Database (used by docker-compose)
+# Xray Cloud (Jira > Apps > Xray > API Keys)
+XRAY_CLIENT_ID=your-xray-client-id
+XRAY_CLIENT_SECRET=your-xray-client-secret
+
+# Postman API (postman.co/settings/me/api-keys)
+POSTMAN_API_URL=https://api.getpostman.com
+PM_API_KEY=PMAK-xxxxxxxx
+POSTMAN_WORKSPACE_IDS=your-workspace-id
+
+# PostgreSQL
 POSTGRES_USER=xray
 POSTGRES_PASSWORD=xray
 POSTGRES_DB=xray_bridge
 DATABASE_URL=postgresql://xray:xray@localhost:5432/xray_bridge
-
-# Xray Cloud (get from: Jira → Apps → Xray → API Keys)
-XRAY_CLIENT_ID=your-client-id
-XRAY_CLIENT_SECRET=your-client-secret
-
-# Postman API (get from: postman.co/settings/me/api-keys)
-PM_API_KEY=PMAK-xxxxxxxx
-POSTMAN_WORKSPACE_IDS=your-workspace-id
-
-# Monitor API (newman-remote-api)
-NEWMAN_REMOTE_API_URL=http://localhost:8080
-X_ACCESS_TOKEN=your-monitor-api-access-token
 ```
 
 ### Optional
 
 ```bash
-# Sync settings
-SYNC_ENABLED=false           # Auto-start scheduler
-SYNC_CRON=0 * * * *          # Cron expression (every hour)
 SYNC_BASE_TIME=2026-01-01T00:00:00Z  # Only sync runs after this time
-
-# Server
+SYNC_ENABLED=false                    # Auto-start scheduler
+SYNC_CRON=0 * * * *                   # Cron expression (every hour)
 PORT=3003
 ```
+
+### How it connects
+
+All monitor data is fetched via the Postman public API using `PM_API_KEY`:
+- `GET /monitors?collectionUid=xxx` - list monitors
+- `GET /monitors/:monitorId/executions` - list executions (cursor-paginated)
+- `GET /monitors/:monitorId/executions/:executionId/runs` - list runs
+- `GET /monitors/:monitorId/runs/:runId/results` - get run results
 
 ---
 
@@ -104,30 +103,31 @@ PORT=3003
 
 ---
 
-## Usage
+## Deployment
 
-### Manual Sync
+See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for:
+- **Option A**: Docker Compose on EC2 (quick setup)
+- **Option B**: ECS Fargate + RDS via CloudFormation (production-grade)
 
-```bash
-# Sync all monitors in a workspace
-curl -X POST http://localhost:3003/sync/run \
-  -H "Content-Type: application/json" \
-  -d '{"workspaceId": "your-workspace-id"}'
-```
+---
 
-### Scheduled Sync
+## Docker
 
 ```bash
-# Start scheduler
-curl -X POST http://localhost:3003/scheduler/start \
-  -H "Content-Type: application/json" \
-  -d '{"workspaceIds": ["ws-id-1"], "cronExpression": "0 * * * *"}'
+# Start everything
+docker-compose up -d
 
-# Check status
-curl http://localhost:3003/scheduler/status
+# View logs
+docker logs -f bridge-service
 
-# Stop scheduler
-curl -X POST http://localhost:3003/scheduler/stop
+# Rebuild after code changes
+docker-compose down && docker-compose up -d --build
+
+# Stop everything (keeps data)
+docker-compose down
+
+# Stop and delete database data
+docker-compose down -v
 ```
 
 ---
@@ -157,37 +157,50 @@ PF-3 | Payment Flow Tests
 ## Development
 
 ```bash
+# Stop Docker containers first
+docker-compose down
+
+# Start database only
+docker start bridge-postgres
+
 # Development with auto-reload
 npm run dev
-
-# Debug mode (with inspector)
-npm run debug
-
-# Production
-npm start
-```
-
-### Database Commands
-
-```bash
-# View database in browser
-npx prisma studio
-
-# Reset database (drops all data)
-npx prisma db push --force-reset
-
-# Regenerate Prisma client
-npx prisma generate
 ```
 
 ---
 
-## Architecture
+## Testing / Validation
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed documentation on:
-- Directory structure
-- Code flow diagrams
-- Layer responsibilities
+Recommended approach for validating the service in a new environment:
+
+1. **Isolate**: Copy one of your existing collections to a brand new Postman workspace. Set up a clean Jira project/board with Xray.
+2. **Configure**: Point the service at the test workspace and Jira project (via `.env`). Add `test-plan-id` to the copied collection.
+3. **Run**: Trigger a monitor run, then sync. Verify the test execution appears correctly in Xray.
+4. **Expand**: Once validated, adapt the service to sync additional collections/workspaces.
+
+Some of these steps may be automated in the future.
+
+---
+
+## TODO
+
+### High
+- [ ] Create Dockerfile for the bridge service -- DONE
+- [ ] Remove debug logging -- DONE
+- [ ] Clean up `.env` -- DONE
+- [ ] Fix duplicate sync bug -- DONE
+
+### Medium
+- [ ] Sanitize Xray/Jira output - review what's written to test execution issues and clean up to only include what's useful
+- [ ] Edge case handling - collections/monitors that fall outside our implementation (e.g. no test keys, empty runs, multi-region monitors, large log payloads)
+- [ ] Better error handling for Prisma/DB failures
+- [ ] Fix shutdown handlers in `server.js` - async but not awaited
+
+### Low
+- [ ] Remove unused transformers (`monitorResultToXrayJson.js`, `mockJsonToXrayJson.js`)
+- [ ] Clean up TODO comments across codebase
+- [ ] Remove outdated `scripts/commands.sh`
+- [ ] Consolidate duplicate sync controller methods (`syncJunit` vs `syncJunitRaw`)
 
 ---
 

@@ -99,11 +99,11 @@ export async function getAllMonitorJobs(monitorId, options = {}) {
   const sinceDate = sinceTimestamp ? new Date(sinceTimestamp) : null;
   
   const allJobs = [];
-  let page = 1;
+  let cursor = undefined;
   let hasMore = true;
   
   while (hasMore) {
-    const result = await getMonitorJobs(monitorId, { page });
+    const result = await getMonitorJobs(monitorId, { cursor });
     const jobs = result.data || [];
     const meta = result.meta || {};
     
@@ -123,8 +123,8 @@ export async function getAllMonitorJobs(monitorId, options = {}) {
       allJobs.push(job);
     }
     
-    hasMore = hasMore && meta.nextPage != null;
-    page = meta.nextPage || page + 1;
+    hasMore = hasMore && meta.nextCursor != null && meta.nextCursor !== '';
+    cursor = meta.nextCursor;
   }
   
   allJobs.sort((a, b) => {

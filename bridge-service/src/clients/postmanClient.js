@@ -27,8 +27,6 @@ async function postmanFetch(endpoint) {
   }
 
   const url = `${config.postman.apiUrl}${endpoint}`;
-  console.log('[DEBUG] Postman API URL:', url);
-  console.log('[DEBUG] API Key (first 20 chars):', config.postman.apiKey?.substring(0, 20) + '...');
 
   const response = await fetch(url, {
     headers: {
