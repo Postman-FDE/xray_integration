@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bridge Service - ECS Fargate + RDS PostgreSQL
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy into
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for ECS and RDS (at least 2 in different AZs)
+
+  ImageUri:
+    Type: String
+    Description: Docker image URI (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/bridge-service:latest)
+
+  XrayClientId:
+    Type: String
+    NoEcho: true
+
+  XrayClientSecret:
+    Type: String
+    NoEcho: true
+
+  PostmanApiKey:
+    Type: String
+    NoEcho: true
+
+  PostmanApiUrl:
+    Type: String
+    Default: https://api.getpostman.com
+
+  PostmanWorkspaceIds:
+    Type: String
+
+  SyncBaseTime:
+    Type: String
+    Default: '2026-01-01T00:00:00Z'
+
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Default: xray_bridge_prod
+    MinLength: 8
+
+Resources:
+  # --- Database ---
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Bridge Service RDS subnets
+      SubnetIds: !Ref SubnetIds
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Postgres from ECS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      Engine: postgres
+      EngineVersion: '15'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      MasterUsername: xray
+      MasterUserPassword: !Ref DbPassword
+      DBName: xray_bridge
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      BackupRetentionPeriod: 7
+
+  # --- ECS ---
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: bridge-service
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP to bridge service
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3003
+          ToPort: 3003
+          CidrIp: 0.0.0.0/0
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/bridge-service
+      RetentionInDays: 30
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: bridge-service
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: bridge-service
+          Image: !Ref ImageUri
+          PortMappings:
+            - ContainerPort: 3003
+          Environment:
+            - Name: DATABASE_URL
+              Value: !Sub postgresql://xray:${DbPassword}@${Database.Endpoint.Address}:5432/xray_bridge
+            - Name: XRAY_CLIENT_ID
+              Value: !Ref XrayClientId
+            - Name: XRAY_CLIENT_SECRET
+              Value: !Ref XrayClientSecret
+            - Name: PM_API_KEY
+              Value: !Ref PostmanApiKey
+            - Name: POSTMAN_API_URL
+              Value: !Ref PostmanApiUrl
+            - Name: POSTMAN_WORKSPACE_IDS
+              Value: !Ref PostmanWorkspaceIds
+            - Name: SYNC_BASE_TIME
+              Value: !Ref SyncBaseTime
+            - Name: SYNC_ENABLED
+              Value: 'true'
+            - Name: PORT
+              Value: '3003'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: bridge
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: Database
+    Properties:
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt ECSSecurityGroup.GroupId
+          Subnets: !Ref SubnetIds
+
+Outputs:
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  ClusterName:
+    Value: !Ref ECSCluster
+  ServiceName:
+    Value: !GetAtt Service.Name
