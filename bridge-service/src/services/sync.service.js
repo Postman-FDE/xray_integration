@@ -7,7 +7,7 @@
 
 import * as postmanClient from '../clients/postmanClient.js';
 import * as syncState from '../store/syncState.js';
-import * as syncMonitorRunsJob from '../jobs/syncMonitorRunsJob.js';
+import * as syncMonitorRunsJob from '../jobs/syncMonitorRuns.job.js';
 
 /**
  * Sync runs for a workspace
@@ -29,8 +29,10 @@ export async function syncRuns(options = {}) {
   console.log(`Time: ${new Date().toISOString()}`);
   console.log(`Workspace: ${workspaceId}`);
 
-  // Create sync job record
   const jobId = await syncState.createSyncJob();
+  if (!jobId) {
+    throw new Error('Database is unavailable. Aborting sync to prevent duplicate processing.');
+  }
 
   const results = {
     collections: [],
@@ -39,31 +41,33 @@ export async function syncRuns(options = {}) {
   };
 
   try {
-    // Step 1: Get Xray-linked collections
+    // Step 1: Get Xray-linked collections. fetch all collections from workspace, filter to collections with test-plan-id variable
     const xrayCollections = await getXrayLinkedCollections(workspaceId);
 
     // Step 2: For each collection, sync monitors (call job)
     console.log('\n── Step 2: Syncing Monitor Runs ──');
     
-    for (const collection of xrayCollections) {
-      try {
-        const collectionResult = await syncMonitorRunsJob.syncCollectionMonitors({
-          collection,
-          jobId
-        });
-        results.collections.push(collectionResult);
-        results.totalSynced += collectionResult.runsSynced;
-        results.totalFailed += collectionResult.runsFailed;
-      } catch (error) {
-        console.error(`Error syncing ${collection.name}: ${error.message}`);
-        results.collections.push({
-          collectionUid: collection.uid,
-          collectionName: collection.name,
-          error: error.message,
-          runsSynced: 0,
-          runsFailed: 0
-        });
-      }
+    const collectionResults = await Promise.all(
+      xrayCollections.map(async (collection) => {
+        try {
+          return await syncMonitorRunsJob.syncCollectionMonitors({ collection, jobId });
+        } catch (error) {
+          console.error(`Error syncing ${collection.name}: ${error.message}`);
+          return {
+            collectionUid: collection.uid,
+            collectionName: collection.name,
+            error: error.message,
+            runsSynced: 0,
+            runsFailed: 0
+          };
+        }
+      })
+    );
+
+    for (const r of collectionResults) {
+      results.collections.push(r);
+      results.totalSynced += r.runsSynced || 0;
+      results.totalFailed += r.runsFailed || 0;
     }
 
     // Complete job
@@ -110,7 +114,7 @@ async function getXrayLinkedCollections(workspaceId) {
   }
   
   for (const c of xrayCollections) {
-    const testPlanId = postmanClient.getTestPlanId(c);
+    const testPlanId = c.variable?.find(v => v.key === 'test-plan-id')?.value || null;
     console.log(`• ${c.name} → ${testPlanId}`);
   }
 

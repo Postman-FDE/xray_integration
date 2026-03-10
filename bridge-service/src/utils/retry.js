@@ -5,7 +5,7 @@
 /**
  * Default retry configuration
  */
-export const DEFAULT_RETRY_CONFIG = {
+const DEFAULT_RETRY_CONFIG = {
   maxRetries: 3,
   initialDelayMs: 1000,  // 1 second
   maxDelayMs: 10000,     // 10 seconds
@@ -18,7 +18,7 @@ export const DEFAULT_RETRY_CONFIG = {
  * @param {number} ms - Milliseconds to sleep
  * @returns {Promise<void>}
  */
-export function sleep(ms) {
+function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 

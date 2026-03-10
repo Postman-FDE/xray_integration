@@ -6,7 +6,7 @@
 
 import * as scheduler from '../scheduler.js';
 import * as syncState from '../store/syncState.js';
-import config from '../config.js';
+import { config } from '../config.js';
 
 /**
  * GET /scheduler/status

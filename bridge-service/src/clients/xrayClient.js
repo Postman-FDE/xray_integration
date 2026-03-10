@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { withRetry } from '../utils/retry.js';
+import { XrayApiError } from '../middleware/errorHandler.js';
 
 /**
  * Cache for the auth token
@@ -36,7 +37,7 @@ export async function authenticate() {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Xray authentication failed: ${response.status} - ${errorText}`);
+    throw new XrayApiError(`Xray authentication failed: ${response.status} - ${errorText}`);
   }
 
   // Response is just the token string (with quotes)
@@ -87,7 +88,7 @@ export async function importJUnitResults(xmlContent, options = {}) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
+      throw new XrayApiError(`Xray import failed: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
@@ -119,7 +120,7 @@ export async function importXrayJson(payload) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Xray import failed: ${response.status} - ${errorText}`);
+      throw new XrayApiError(`Xray import failed: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
@@ -127,11 +128,4 @@ export async function importXrayJson(payload) {
   }, { operationName: 'Xray JSON import' });
 }
 
-/**
- * Clear cached auth token (useful for testing or re-auth)
- */
-export function clearAuthCache() {
-  authToken = null;
-  tokenExpiry = null;
-}
 

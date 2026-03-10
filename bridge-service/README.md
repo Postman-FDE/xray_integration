@@ -79,27 +79,14 @@ All monitor data is fetched via the Postman public API using `PM_API_KEY`:
 
 ## API Endpoints
 
-### Sync
-
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/sync/run` | Sync monitor runs to Xray |
 | `POST` | `/sync/junit` | Upload JUnit XML to Xray |
-
-### Scheduler
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/scheduler/status` | Get scheduler and sync state |
-| `POST` | `/scheduler/start` | Start the cron scheduler |
-| `POST` | `/scheduler/stop` | Stop the cron scheduler |
-
-### Health
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
 | `GET` | `/health` | Service health check |
-| `GET` | `/health/xray` | Xray connection check |
+| `GET` | `/scheduler/status` | Scheduler and sync state |
+| `POST` | `/scheduler/start` | Start cron scheduler |
+| `POST` | `/scheduler/stop` | Stop cron scheduler |
 
 ---
 
@@ -144,12 +131,17 @@ Add a `test-plan-id` variable to your Postman collection:
 
 ### Folder Naming Convention
 
-Name folders with Xray test key prefixes:
+Name folders with Xray test key prefixes. Nested folders are supported -- the service walks the full collection tree.
 
 ```
 PF-1 | Login API Tests
+  Setup - Create User
+  Login Request
+  Verify Token
 PF-2 | Create Order Tests
-PF-3 | Payment Flow Tests
+  Setup - Login
+  Create Order
+  Verify Order
 ```
 
 ---
@@ -184,23 +176,78 @@ Some of these steps may be automated in the future.
 
 ## TODO
 
-### High
-- [ ] Create Dockerfile for the bridge service -- DONE
-- [ ] Remove debug logging -- DONE
-- [ ] Clean up `.env` -- DONE
-- [ ] Fix duplicate sync bug -- DONE
-
 ### Medium
-- [ ] Sanitize Xray/Jira output - review what's written to test execution issues and clean up to only include what's useful
-- [ ] Edge case handling - collections/monitors that fall outside our implementation (e.g. no test keys, empty runs, multi-region monitors, large log payloads)
-- [ ] Better error handling for Prisma/DB failures
-- [ ] Fix shutdown handlers in `server.js` - async but not awaited
+- [ ] Add link back to the monitor in test execution description (needs team slug)
+- [ ] Test parallel sync (workspaces, collections, monitors now run via Promise.all)
+- [ ] Handle collection updates between monitor run and sync (folderMap may not match if collection changed after run)
+
+### Medium (contd.)
+- [ ] Test AWS deployment -- verify Docker Compose on EC2, test CloudFormation stack (ECS + RDS), validate end-to-end sync in deployed environment
+- [ ] Test scheduler -- verify cron-based auto-sync works correctly (start, stop, status, multiple workspaces)
 
 ### Low
-- [ ] Remove unused transformers (`monitorResultToXrayJson.js`, `mockJsonToXrayJson.js`)
-- [ ] Clean up TODO comments across codebase
-- [ ] Remove outdated `scripts/commands.sh`
-- [ ] Consolidate duplicate sync controller methods (`syncJunit` vs `syncJunitRaw`)
+- [ ] Rename files and methods for clarity ("job" is overloaded across scheduler, sync logic, and executions)
+- [ ] Extract duplicated transformer helpers (`extractTestKey`, `buildComment`, `buildEvidences`) into shared module
+- [ ] Automated testing -- generate test collections with various structures and validate sync output
+
+---
+
+## Changelog
+
+### 2026-03-10
+
+**Xray Output**
+- Test execution title now shows collection name, date/time, and region (e.g. "LoanFlow Tests - 2026-03-10 17:00 (us-east)")
+- Cleaned up description: removed markdown asterisks, internal run ID, and stale formatting
+- Changed "Trigger" label to "Source" in description
+- Added region to description for multi-region monitors
+- Cleaned up test comment formatting (removed markdown)
+- Skip Xray push when 0 tests are mapped (logs warning with guidance)
+- Added assertion mapping count log (e.g. "0 of 36 assertion events had no matching test key")
+
+**Bug Fixes**
+- Fixed pagination bug: cursor param was silently ignored in `getAllMonitorJobs`
+- Fixed duplicate sync: checkpoint now uses job `finishedAt` instead of run `finishedAt`
+- Fixed `config.js` default export removal breaking `prisma/client.js`
+- DB connectivity check: sync aborts if database is unavailable (prevents untracked duplicate syncing)
+
+**Code Cleanup**
+- Deleted dead files: `testResolver.js`, `jiraClient.js`, `mockJsonToXrayJson.js`
+- Deleted dead functions: `getCollectionRuns`, `getRunResults`, `replaceTestKeys`, `clearAuthCache`, `resetState`
+- Consolidated duplicate fetch helpers (`postmanFetch` shared between clients)
+- Removed debug logging (API URLs, keys, Xray payloads)
+- Standardized all config imports to named imports
+- Replaced `import *` with named imports in sync job
+- Moved `buildFolderMap` to where it's used, made it recursive for nested folders
+- Inlined `getTestPlanId` (removed unnecessary utility)
+- Removed dead code checks, stale TODOs, unused imports
+- Simplified sync controller (3 methods to 1, removed Jira resolution)
+- Removed `/health/xray` endpoint
+- Fixed redundant ternary in transformers
+- Fixed `fs.readFileSync` to async `fs.readFile`
+- Standardized `extractTestKey` regex across all transformers
+- Removed outdated `scripts/commands.sh`
+
+**Error Handling**
+- All Prisma/DB calls wrapped in try/catch (sync state is best-effort)
+- `xrayClient` now throws `XrayApiError` for proper error classification
+- Removed fragile string-matching error detection
+
+**Infrastructure**
+- Dockerized: Dockerfile, docker-compose (bridge + Postgres), auto DB migration on startup
+- CloudFormation template for ECS Fargate + RDS deployment
+- Deployment guide with EC2 and ECS options
+- Parallelized sync across workspaces, collections, and monitors
+- Support for multiple workspace IDs in sync endpoint
+- Cleaned up `.env` and `.env.example`
+
+### 2026-03-09
+
+**API Gateway (Janus)**
+- Exposed 3 monitor run endpoints via Janus gateway
+- Cursor-based pagination for executions
+- Lua response transforms: flatten status to state, strip internal fields, trim run logs
+- Switched bridge from internal API to public Postman API endpoints
 
 ---
 

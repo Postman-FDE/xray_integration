@@ -95,5 +95,4 @@ export function validateConfig() {
   return true;
 }
 
-export default config;
 

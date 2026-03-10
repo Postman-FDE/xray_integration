@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { uploadXml } from '../middleware/upload.js';
-import * as syncController from '../controllers/syncController.js';
+import * as syncController from '../controllers/sync.controller.js';
 import * as jobsController from '../controllers/jobsController.js';
 
 const router = Router();
@@ -20,8 +20,6 @@ router.get('/health', (req, res) => {
   });
 });
 
-router.get('/health/xray', syncController.checkStatus);
-
 // ============================================================================
 // Sync endpoints
 // ============================================================================
@@ -32,7 +30,7 @@ router.get('/health/xray', syncController.checkStatus);
 router.post('/sync/junit', uploadXml, syncController.syncJunit);
 
 // Real Postman APIs sync (monitors + collection runs)
-router.post('/sync/run', syncController.runSync);
+router.post('/sync/run', syncController.syncRuns);
 
 // Mock-based sync (legacy - uses mock collection run results API)
 

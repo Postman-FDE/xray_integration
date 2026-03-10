@@ -9,21 +9,21 @@ import { disconnect as disconnectDb } from './store/syncState.js';
 
 const app = express();
 
-// Middleware
+// Middleware - parse request bodies and log requests
 app.use(express.json());
 app.use(express.text({ type: 'application/xml' })); // For raw XML body
 app.use(loggingMiddleware);
 
-// Routes
+// Mount all Routes
 app.use(routes);
 
 // Error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// Start server
+const configValid = validateConfig();
+
 app.listen(config.server.port, () => {
-  const configValid = validateConfig();
 
   // Optionally start scheduler if enabled
   if (config.sync.enabled && config.postman.workspaceIds.length > 0) {
@@ -34,36 +34,22 @@ app.listen(config.server.port, () => {
   }
 
   const schedulerStatus = isSchedulerRunning() 
-    ? `✅ Running (${config.sync.cronExpression})` 
-    : '⏸️  Disabled (set SYNC_ENABLED=true)';
+    ? `Running (${config.sync.cronExpression})` 
+    : 'Disabled (set SYNC_ENABLED=true)';
   
   console.log(`
-╔════════════════════════════════════════════════════════════╗
-║                                                            ║
-║   🔗  POSTMAN-XRAY-BRIDGE                                  ║
-║                                                            ║
-║   Sync Postman/Newman results to Jira Xray                 ║
-║                                                            ║
-║   Local:  http://localhost:${config.server.port}                           ║
-║   Health: http://localhost:${config.server.port}/health                    ║
-║                                                            ║
-║   Health Endpoints:                                        ║
-║   • GET    /health            Server health                ║
-║   • GET    /health/xray       Xray connection check        ║
-║                                                            ║
-║   Sync Endpoints:                                          ║
-║   • POST   /sync/junit        Sync JUnit XML to Xray       ║
-║   • POST   /sync/run          Sync from Postman APIs       ║
-║                                                            ║
-║   Scheduler Endpoints:                                     ║
-║   • GET    /scheduler/status  Get scheduler status         ║
-║   • POST   /scheduler/start   Start scheduler              ║
-║   • POST   /scheduler/stop    Stop scheduler               ║
-║                                                            ║
-║   Xray:      ${configValid ? '✅ Configured' : '⚠️  Not configured'}                            ║
-║   Scheduler: ${schedulerStatus}       ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+Bridge Service started on http://localhost:${config.server.port}
+
+Endpoints:
+  GET  /health           Health check
+  POST /sync/junit       Sync JUnit XML to Xray
+  POST /sync/run         Sync monitor runs to Xray
+  GET  /scheduler/status Scheduler status
+  POST /scheduler/start  Start scheduler
+  POST /scheduler/stop   Stop scheduler
+
+Xray:      ${configValid ? 'Configured' : 'Not configured'}
+Scheduler: ${schedulerStatus}
   `);
 });
 

@@ -2,6 +2,10 @@
 
 Two deployment options: start with Option A for testing, move to Option B for production.
 
+## Setup Recommendations
+
+- **Xray "Executed By"**: Create a Jira service account (e.g. "Postman Bridge Bot") and generate the Xray API key from that account. All test executions will show this account as the executor instead of a personal account.
+
 ---
 
 ## Option A: EC2 with Docker Compose
