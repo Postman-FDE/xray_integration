@@ -12,12 +12,11 @@
  * - Update sync state
  */
 
-import * as monitorClient from '../clients/monitorClient.js';
-import * as postmanClient from '../clients/postmanClient.js';
-import * as xrayClient from '../clients/xrayClient.js';
-import * as syncState from '../store/syncState.js';
+import { getMonitors, getAllMonitorJobs, getJobRuns, getRunLog } from '../clients/monitorClient.js';
+import { importXrayJson } from '../clients/xrayClient.js';
+import { getLastSyncedTimestamp, updateLastSynced, recordSyncRun } from '../store/syncState.js';
 import { transformToXrayJson as transformMonitorLog } from '../transformers/monitorJsonToXrayJson.js';
-import config from '../config.js';
+import { config } from '../config.js';
 
 /**
  * Sync all monitors for a given Postman collection
@@ -30,38 +29,27 @@ import config from '../config.js';
 export async function syncCollectionMonitors({ collection, jobId }) {
   const collectionUid = collection.uid;
   const collectionName = collection.name;
-  const testPlanId = postmanClient.getTestPlanId(collection);
+  const testPlanId = collection.variable?.find(v => v.key === 'test-plan-id')?.value || null;
   
   console.log(`\n📁 Collection: ${collectionName || collectionUid} | Test Plan: ${testPlanId || '(none)'}`);
   
   // Build folderMap from collection items (maps request IDs to folder names with test keys)
-  const folderMap = postmanClient.buildFolderMap(collection);
+  const folderMap = buildFolderMap(collection);
   
-  if (!collectionUid) {
-    console.log('No collection UID, skipping');
-    return { collectionUid, collectionName, testPlanId, runsSynced: 0, runsFailed: 0, monitors: [] };
-  }
-
-  // Get all monitors for this collection 
-  const monitors = await monitorClient.getMonitors({ collectionId: collectionUid }); // TODO: Should this be postmanClient?
+  const monitors = await getMonitors({ collectionId: collectionUid });
   console.log(`Found ${monitors.length} monitor(s) for collection`);
   
   if (monitors.length === 0) {
     return { collectionUid, collectionName, testPlanId, runsSynced: 0, runsFailed: 0, monitors: [] };
   }
 
-  const monitorResults = [];
+  const monitorResults = await Promise.all(
+    monitors.map(monitor => syncSingleMonitor({ monitor, testPlanId, collectionName, folderMap, jobId }))
+  );
+
   let totalSynced = 0;
   let totalFailed = 0;
-  
-  for (const monitor of monitors) {
-    const result = await syncSingleMonitor({
-      monitor,
-      testPlanId,
-      folderMap,
-      jobId
-    });
-    monitorResults.push(result);
+  for (const result of monitorResults) {
     totalSynced += result.runsSynced;
     totalFailed += result.runs.filter(r => r.status === 'error').length;
   }
@@ -84,19 +72,19 @@ export async function syncCollectionMonitors({ collection, jobId }) {
  * 2. Sort oldest-first for monotonic timestamp progression
  * 3. For each job: fetch runs → fetch logs → sync → checkpoint
  */
-async function syncSingleMonitor({ monitor, testPlanId, folderMap, jobId }) {
+async function syncSingleMonitor({ monitor, testPlanId, collectionName, folderMap, jobId }) {
   const monitorId = monitor.id;
   const monitorName = monitor.name;
 
   console.log(`\n📊 Monitor: ${monitorName || monitorId}`);
   
-  const lastSyncedTimestamp = await syncState.getLastSyncedTimestamp(monitorId, 'monitor');
+  const lastSyncedTimestamp = await getLastSyncedTimestamp(monitorId, 'monitor');
   const effectiveSince = getEffectiveSinceTimestamp(lastSyncedTimestamp);
   
   console.log(`Last synced: ${lastSyncedTimestamp || '(never)'} | Syncing since: ${effectiveSince || '(all time)'}`);
 
   // Fetch jobs (lightweight - no run details yet)
-  const jobs = await monitorClient.getAllMonitorJobs(monitorId, {
+  const jobs = await getAllMonitorJobs(monitorId, {
     sinceTimestamp: effectiveSince
   });
   console.log(`Found ${jobs.length} job(s) to sync`);
@@ -112,7 +100,7 @@ async function syncSingleMonitor({ monitor, testPlanId, folderMap, jobId }) {
   for (const job of jobs) {
     jobsProcessed++;
     // Fetch runs for this job
-    const runs = await monitorClient.getJobRuns(monitorId, job.id);
+    const runs = await getJobRuns(monitorId, job.id);
     
     for (const run of runs) {
       console.log(`Processing job ${jobsProcessed}/${jobs.length}`);
@@ -124,11 +112,12 @@ async function syncSingleMonitor({ monitor, testPlanId, folderMap, jobId }) {
         jobFinishedAt: job.finishedAt
       };
       
-      const runResult = await syncSingleRun({ // TODO: Verify, clean up. check if we can parallelize multiple runs.
+      const runResult = await syncSingleRun({
         sourceType: 'monitor',
         sourceId: monitorId,
         sourceName: monitorName,
         testPlanId,
+        collectionName,
         run: runWithContext,
         jobId,
         folderMap
@@ -154,35 +143,39 @@ async function syncSingleRun({
   sourceId,
   sourceName,
   testPlanId,
+  collectionName,
   run,
   jobId,
   folderMap
 }) {
   try {
-    const runLog = await monitorClient.getRunLog(sourceId, run.id);
+    const runLog = await getRunLog(sourceId, run.id);
 
-    // Transform to Xray format using log-based transformer
-    const xrayPayload = transformMonitorLog(runLog, folderMap, { testPlanKey: testPlanId });
+    const xrayPayload = transformMonitorLog(runLog, folderMap, { testPlanKey: testPlanId, collectionName });
 
-    // Push to Xray
-    const xrayResult = await xrayClient.importXrayJson(xrayPayload);
-    console.log(`✓ Run ${run.id} → ${xrayResult.key} (${xrayPayload.tests?.length || 0} tests)`);
+    if (!xrayPayload.tests || xrayPayload.tests.length === 0) {
+      console.log(`⚠ Run ${run.id} has 0 mapped tests, skipping Xray push. Check folder naming (expected "PF-XX | ..." pattern).`);
+      return { runId: run.id, status: 'skipped', reason: 'no tests mapped' };
+    }
+
+    const xrayResult = await importXrayJson(xrayPayload);
+    console.log(`✓ Run ${run.id} → ${xrayResult.key} (${xrayPayload.tests.length} tests)`);
 
     const syncTimestamp = run.jobFinishedAt || run.finishedAt || new Date().toISOString();
 
     // Update sync state
-    await syncState.updateLastSynced(sourceId, sourceType, run.id, syncTimestamp, {
+    await updateLastSynced(sourceId, sourceType, run.id, syncTimestamp, {
       testPlanId,
       sourceName
     });
     
-    await syncState.recordSyncRun(jobId, sourceId, sourceType, run.id, 'success', xrayResult.key, null);
+    await recordSyncRun(jobId, sourceId, sourceType, run.id, 'success', xrayResult.key, null);
     
     return { runId: run.id, status: 'synced', xrayTestExecKey: xrayResult.key };
 
   } catch (error) {
     console.error(`✗ Run ${run.id} failed: ${error.message}`);
-    await syncState.recordSyncRun(jobId, sourceId, sourceType, run.id, 'error', null, error.message);
+    await recordSyncRun(jobId, sourceId, sourceType, run.id, 'error', null, error.message);
     return { runId: run.id, status: 'error', error: error.message };
   }
 }
@@ -208,4 +201,29 @@ function getEffectiveSinceTimestamp(lastSyncedTimestamp) {
   const baseDate = new Date(baseTime);
   const lastSyncDate = new Date(lastSyncedTimestamp);
   return baseDate > lastSyncDate ? baseTime : lastSyncedTimestamp;
+}
+
+/**
+ * Build a map of request ID → folder name.
+ * The folder name contains the test key (e.g., "PF-52 | Create Loan").
+ */
+function buildFolderMap(collection) {
+  const folderMap = {};
+
+  function walk(items, testKeyFolder) {
+    if (!items || !Array.isArray(items)) return;
+    for (const item of items) {
+      const hasTestKey = /^[A-Z]+-\d+\s*\|/.test(item.name);
+      const currentFolder = hasTestKey ? item.name : testKeyFolder;
+
+      if (item.item && Array.isArray(item.item)) {
+        walk(item.item, currentFolder);
+      } else if (item.id && currentFolder) {
+        folderMap[item.id] = currentFolder;
+      }
+    }
+  }
+
+  walk(collection.item, null);
+  return folderMap;
 }

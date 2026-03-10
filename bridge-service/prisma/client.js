@@ -11,7 +11,7 @@
 
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.ts';
-import config from '../src/config.js';
+import { config } from '../src/config.js';
 
 // Initialize Prisma with PostgreSQL adapter
 const adapter = new PrismaPg({ connectionString: config.database.url });

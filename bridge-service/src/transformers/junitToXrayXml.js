@@ -15,7 +15,7 @@ function extractTestKey(testsuiteName) {
   if (!testsuiteName) return null;
   
   // Match pattern like "SJP-2" or "ABC-123" at the start
-  const match = testsuiteName.match(/^([A-Z]+-\d+)/);
+  const match = testsuiteName.match(/^([A-Z]+-\d+)\s*\|/);
   return match ? match[1] : null;
 }
 
@@ -95,30 +95,5 @@ export function getTestKeySummary(xmlContent) {
   return Array.from(testKeys).sort();
 }
 
-/**
- * Replace test identifiers in XML with actual Jira keys
- * @param {string} xmlContent - Original XML
- * @param {Object} keyMapping - Map of identifier → actual key (e.g., {'SJP-2': 'PF-11'})
- * @returns {string} - XML with replaced keys
- */
-export function replaceTestKeys(xmlContent, keyMapping) {
-  if (!keyMapping || Object.keys(keyMapping).length === 0) {
-    return xmlContent;
-  }
-  
-  let updatedXml = xmlContent;
-  
-  // Replace each identifier with actual key
-  for (const [identifier, actualKey] of Object.entries(keyMapping)) {
-    // Replace in testsuite names
-    const regex = new RegExp(`(<testsuite\\s+name=")(${identifier})([^"]*")`, 'g');
-    updatedXml = updatedXml.replace(regex, `$1${actualKey}$3`);
-    
-    // Replace in test_key properties
-    const propRegex = new RegExp(`(property name="test_key" value=")(${identifier})(")`, 'g');
-    updatedXml = updatedXml.replace(propRegex, `$1${actualKey}$3`);
-  }
-  
-  return updatedXml;
-}
+
 

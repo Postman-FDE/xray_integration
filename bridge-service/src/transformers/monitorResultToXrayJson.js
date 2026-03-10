@@ -11,7 +11,7 @@
  * - requests[]: array of requests with assertions, headers, response info
  */
 
-import { Buffer } from 'buffer';
+
 
 /**
  * Transform Monitor run results to Xray JSON format
@@ -146,7 +146,7 @@ function extractTestResults(requests, folderMap = {}) {
     const allPassed = test.assertions.every(a => a.status === 'passed' || a.skipped);
     const hasFailed = test.assertions.some(a => a.status === 'failed');
     
-    const status = hasFailed ? 'FAILED' : allPassed ? 'PASSED' : 'PASSED';
+    const status = hasFailed ? 'FAILED' : 'PASSED';
     
     // Build comment with assertion summary
     const comment = buildComment(test.assertions);

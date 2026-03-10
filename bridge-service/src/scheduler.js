@@ -5,8 +5,8 @@
  */
 
 import cron from 'node-cron';
-import * as syncService from './services/syncService.js';
-import config from './config.js';
+import * as syncService from './services/sync.service.js';
+import { config } from './config.js';
 
 let scheduledTask = null;
 
@@ -19,7 +19,7 @@ let scheduledTask = null;
 export function startScheduler(options = {}) {
   const {
     workspaceIds = config.postman.workspaceIds,
-    cronExpression = '0 * * * *' // Every hour at minute 0
+    cronExpression = config.sync.cronExpression
   } = options;
 
   if (!workspaceIds || workspaceIds.length === 0) {
@@ -95,7 +95,7 @@ export async function runNow(workspaceIds) {
       results.push(result);
     } catch (error) {
       console.error(`[Scheduler] Error syncing workspace ${wsId}:`, error.message);
-      results.push({ workspaceId: wsId, error: error.message, synced: 0 });
+      results.push({ workspaceId: wsId, error: error.message, totalSynced: 0 });
     }
   }
   

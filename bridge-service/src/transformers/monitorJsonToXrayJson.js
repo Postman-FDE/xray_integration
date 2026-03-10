@@ -12,7 +12,7 @@
  * We need a folderMap (requestId -> folderName with test key) from the collection.
  */
 
-import { Buffer } from 'buffer';
+
 
 /**
  * Transform Monitor run log to Xray JSON format
@@ -30,6 +30,7 @@ export function transformToXrayJson(runLog, folderMap = {}, options = {}) {
   
   // Extract run metadata
   const runId = runData.id;
+  const region = runData.region;
   const startedAt = runData.startedAt;
   const finishedAt = runData.finishedAt;
   const results = runData.results || {};
@@ -48,16 +49,14 @@ export function transformToXrayJson(runLog, folderMap = {}, options = {}) {
     ? new Date(finishedAt) - new Date(startedAt) 
     : null;
   
-  // Build description
-  let description = `**Trigger:** Monitor Run`;
-  description += `\n**Run ID:** ${runId}`;
-  if (runData.logUrl) {
-    description += `\n**Log URL:** [View Details](${runData.logUrl})`;
+  let description = `Source: Monitor Run`;
+  if (region) {
+    description += `\nRegion: ${region}`;
   }
   if (duration) {
-    description += `\n**Duration:** ${duration}ms`;
+    description += `\nDuration: ${duration}ms`;
   }
-  description += `\n**Passed:** ${results.passedTestCount || 0} | **Failed:** ${results.failedTestCount || 0}`;
+  description += `\nPassed: ${results.passedTestCount || 0} | Failed: ${results.failedTestCount || 0}`;
   description += `\n\nAutomated test execution synced from Postman Monitor`;
 
   // Build Xray JSON payload
@@ -65,7 +64,7 @@ export function transformToXrayJson(runLog, folderMap = {}, options = {}) {
     testExecutionKey: options.testExecutionKey || undefined,
     info: {
       project: projectKey,
-      summary: `${options.collectionName || 'Monitor Run'} - ${new Date(startedAt || Date.now()).toISOString().split('T')[0]}`,
+      summary: `${options.collectionName || 'Monitor Run'} - ${new Date(startedAt || Date.now()).toISOString().replace('T', ' ').substring(0, 16)}${region ? ` (${region})` : ''}`,
       description: description,
       startDate: startedAt ? new Date(startedAt).toISOString() : new Date().toISOString(),
       finishDate: finishedAt ? new Date(finishedAt).toISOString() : new Date().toISOString(),
@@ -110,24 +109,22 @@ function buildItemMap(log) {
  * @param {Object} folderMap - Map of request ID to folder name (from collection)
  */
 function extractTestResults(log, itemMap, folderMap) {
-  // Group assertions by test key (from folder)
   const grouped = {};
+  let totalAssertionEvents = 0;
+  let unmappedAssertionEvents = 0;
   
   for (const entry of log) {
     if (entry.event === 'assertion' && entry.args?.assertion) {
+      totalAssertionEvents++;
       const assertions = entry.args.assertion;
       const ref = entry.args.cursor?.ref;
       const itemInfo = itemMap[ref] || { name: 'Unknown Request', id: null };
       
-      // Try to get folder name from folderMap using item ID
       const folderName = folderMap[itemInfo.id] || null;
-      
-      // Extract test key from folder name (e.g., "PF-52 | Create Loan" → "PF-52")
-      // If no folderMap entry, fall back to item name pattern
       const testKey = extractTestKey(folderName) || extractTestKey(itemInfo.name);
       
       if (!testKey) {
-        // Skip items without test keys (silent - this is expected for non-test requests)
+        unmappedAssertionEvents++;
         continue;
       }
       
@@ -153,14 +150,14 @@ function extractTestResults(log, itemMap, folderMap) {
     }
   }
   
-  console.log(`Found ${Object.keys(grouped).length} test(s) with test keys`);
+  console.log(`Found ${Object.keys(grouped).length} test(s) with test keys (${unmappedAssertionEvents} of ${totalAssertionEvents} assertion events had no matching test key)`);
   
   // Convert to Xray test format
   return Object.values(grouped).map(test => {
     const allPassed = test.assertions.every(a => a.status === 'passed' || a.skipped);
     const hasFailed = test.assertions.some(a => a.status === 'failed');
     
-    const status = hasFailed ? 'FAILED' : allPassed ? 'PASSED' : 'PASSED';
+    const status = hasFailed ? 'FAILED' : 'PASSED';
     
     // Build comment with assertion summary
     const comment = buildComment(test.assertions);
@@ -195,19 +192,19 @@ function buildComment(assertions) {
   const skipped = assertions.filter(a => a.skipped).length;
   const total = assertions.length;
   
-  let comment = `**${passed}/${total}** assertions passed`;
+  let comment = `${passed}/${total} assertions passed`;
   
   if (skipped > 0) {
     comment += ` (${skipped} skipped)`;
   }
   
   if (failed > 0) {
-    comment += `\n\n**Failures:**\n`;
+    comment += `\n\nFailures:\n`;
     const failures = assertions.filter(a => a.status === 'failed');
     for (const f of failures) {
-      comment += `• ${f.assertionName}`;
+      comment += `- ${f.assertionName}`;
       if (f.error?.message) {
-        comment += `\n  → ${f.error.message}`;
+        comment += `: ${f.error.message}`;
       }
       comment += '\n';
     }
