@@ -1,0 +1,684 @@
+{
+  "info": {
+    "_postman_id": "522ff624-d39e-40bd-9eed-7aa45ffc6d35",
+    "name": "LoanFlow Tests - Origin E2E Regression",
+    "description": "Test collection for LoanFlow Service - Maps to Jira Xray Test Plan SJP-1.\n\nEach folder corresponds to a Jira Xray Test:\n- SJP-2: Change Order API Test\n- SJP-3: Cancel Loan API Test\n- SJP-4: Contract Review / CPC Rejected API Test\n- SJP-5: Submit Project Info API Test\n- SJP-6: Verify Project Info (TPO) API Test",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "49591604",
+    "_collection_link": "https://go.postman.co/collection/49591604-522ff624-d39e-40bd-9eed-7aa45ffc6d35?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "PF-142 | Change Order API Test",
+      "item": [
+        {
+          "name": "Setup - Create Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan created successfully', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Loan has ACTIVE status', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.eql('ACTIVE');",
+                  "});",
+                  "",
+                  "pm.test('Loan ID is generated', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.loanId).to.match(/^LOAN-[A-Z0-9]+$/);",
+                  "    pm.collectionVariables.set('loanId', response.loanId);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200000,\n  \"borrowerName\": \"Change Order Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Change Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Change order submitted successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const response = pm.response.json();",
+                  "",
+                  "pm.test('Loan amount is updated', function() {",
+                  "    pm.expect(response.amount).to.eql(275000);",
+                  "});",
+                  "",
+                  "pm.test('Change order is recorded', function() {",
+                  "    pm.expect(response.changeOrders).to.be.an('array');",
+                  "    pm.expect(response.changeOrders.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Last change order timestamp is set', function() {",
+                  "    pm.expect(response.lastChangeOrderAt).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('Change order contains previous and new amount', function() {",
+                  "    const lastOrder = response.changeOrders[response.changeOrders.length - 1];",
+                  "    pm.expect(lastOrder.newAmount).to.eql(275000);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newAmount\": 275000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans/{{loanId}}/change-order",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans",
+                "{{loanId}}",
+                "change-order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify - Get Updated Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan retrieved successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Loan status remains ACTIVE', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.eql('ACTIVE');",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans/{{loanId}}",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans",
+                "{{loanId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Tests the change order workflow for modifying loan amounts.\n\nJira Test: SJP-2"
+    },
+    {
+      "name": "PF-143 | Cancel Loan API Test",
+      "item": [
+        {
+          "name": "Setup - Create Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan created successfully', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('loanIdForCancel', response.loanId);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 150000,\n  \"borrowerName\": \"Cancel Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan cancelled successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Status is CANCELLED', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.eql('CANCELLED');",
+                  "});",
+                  "",
+                  "pm.test('Cancel reason is recorded', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.cancelReason).to.eql('Borrower withdrew application');",
+                  "});",
+                  "",
+                  "pm.test('Cancelled timestamp is set', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.cancelledAt).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Borrower withdrew application\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans/{{loanIdForCancel}}/cancel",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans",
+                "{{loanIdForCancel}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Tests the loan cancellation workflow.\n\nJira Test: PF-143"
+    },
+    {
+      "name": "PF-144 | Contract Review - CPC Rejected API Test",
+      "item": [
+        {
+          "name": "Setup - Create Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan created successfully', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('loanIdForReject', response.loanId);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 300000,\n  \"borrowerName\": \"Contract Review Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify - Loan Status is CPC_REJECTED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan retrieved successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Status remains ACTIVE', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.status).to.eql('ACTIVE');",
+                  "});",
+                  "",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans/{{loanIdForReject}}",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans",
+                "{{loanIdForReject}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Tests the contract review workflow, specifically the rejection scenario that sets status to CPC_REJECTED.\n\nJira Test: SJP-4"
+    },
+    {
+      "name": "PF-145 | Submit Project Info API Test",
+      "item": [
+        {
+          "name": "Setup - Create Loan for Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Loan created successfully', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "pm.collectionVariables.set('loanId', response.loanId);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 400000,\n  \"borrowerName\": \"Project Test User\",\n  \"loanType\": \"MORTGAGE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/loans",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "loans"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Project Info",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Project created successfully', function() {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Project ID is generated', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.projectId).to.match(/^PROJ-[A-Z0-9]+$/);",
+                  "    pm.collectionVariables.set('projectId', response.projectId);",
+                  "});",
+                  "",
+                  "pm.test('Project is linked to loan', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.loanId).to.eql(pm.collectionVariables.get('loanId'));",
+                  "});",
+                  "",
+                  "pm.test('Created timestamp is set', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.createdAt).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loanId\": \"{{loanId}}\",\n  \"name\": \"Residential Purchase - 123 Main St\",\n  \"tpoInfo\": {\n    \"companyName\": \"Premier Mortgage Partners\",\n    \"contactName\": \"Sarah Johnson\",\n    \"email\": \"sarah@premiermortgage.com\",\n    \"phone\": \"555-987-6543\",\n    \"licenseNumber\": \"NMLS-789456\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl_lf}}/projects",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Tests the project creation workflow with TPO information.\n\nJira Test: SJP-5"
+    },
+    {
+      "name": "PF-146 | Verify Project Info (TPO) API Test",
+      "item": [
+        {
+          "name": "Get Project by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Project retrieved successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Project ID matches request', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.projectId).to.eql(pm.collectionVariables.get('projectId'));",
+                  "});",
+                  "",
+                  "pm.test('TPO company name is correct', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.tpoInfo.companyName).to.eql('Premier Mortgage Partners');",
+                  "});",
+                  "",
+                  "pm.test('TPO contact name is correct', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.tpoInfo.contactName).to.eql('Sarah Johnson');",
+                  "});",
+                  "",
+                  "pm.test('TPO email is correct', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.tpoInfo.email).to.eql('sarah@premiermortgage.com');",
+                  "});",
+                  "",
+                  "pm.test('TPO license number is correct', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.tpoInfo.licenseNumber).to.eql('NMLS-789456');",
+                  "});",
+                  "",
+                  "pm.test('Project is linked to correct loan', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.loanId).to.eql(pm.collectionVariables.get('loanId'));",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_lf}}/projects/{{projectId}}",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "projects",
+                "{{projectId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify - Project Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 404 Not Found', function() {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error message indicates project not found', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.error).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_lf}}/projects/PROJ-INVALID123",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "projects",
+                "PROJ-INVALID123"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify - List Projects by Loan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Projects retrieved successfully', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains projects array', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.projects).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('At least one project exists for loan', function() {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.count).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Projects belong to the correct loan', function() {",
+                  "    const response = pm.response.json();",
+                  "    const loanId = pm.collectionVariables.get('loanId');",
+                  "    response.projects.forEach(project => {",
+                  "        pm.expect(project.loanId).to.eql(loanId);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl_lf}}/projects?loanId={{loanId}}",
+              "host": [
+                "{{baseUrl_lf}}"
+              ],
+              "path": [
+                "projects"
+              ],
+              "query": [
+                {
+                  "key": "loanId",
+                  "value": "{{loanId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Tests retrieving project information and verifying TPO data.\n\nJira Test: SJP-6"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          "console.log(\"DONE\")"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "test-plan-id",
+      "value": "PF-141"
+    },
+    {
+      "key": "loanId",
+      "value": ""
+    },
+    {
+      "key": "loanIdForCancel",
+      "value": ""
+    },
+    {
+      "key": "loanIdForReject",
+      "value": ""
+    },
+    {
+      "key": "projectId",
+      "value": ""
+    }
+  ]
+}
