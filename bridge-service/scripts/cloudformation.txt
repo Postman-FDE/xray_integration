@@ -1,0 +1,23 @@
+#Login
+aws configure
+
+Create the CloudFormation stack
+aws cloudformation create-stack \
+  --stack-name bridge-service \
+  --template-body file://infra/cloudformation.yml \
+  --capabilities CAPABILITY_IAM \
+  --region ca-central-1 \
+  --parameters \
+    ParameterKey=VpcId,ParameterValue=<your-vpc-id> \
+    ParameterKey=SubnetIds,ParameterValue=\"<subnet-1>,<subnet-2>\" \
+    ParameterKey=ImageUri,ParameterValue=<account-id>.dkr.ecr.<region>.amazonaws.com/bridge-service:latest \
+    ParameterKey=XrayClientId,ParameterValue=<your-xray-client-id> \
+    ParameterKey=XrayClientSecret,ParameterValue=<your-xray-client-secret> \
+    ParameterKey=PostmanApiKey,ParameterValue=<your-postman-api-key> \
+    ParameterKey=PostmanWorkspaceIds,ParameterValue=<your-workspace-id>
+
+# Monitor stack creation progress
+aws cloudformation describe-stack-events --stack-name bridge-service --region ca-central-1 --query 'StackEvents[*].[ResourceType,ResourceStatus]' --output table
+
+# Delete the stack (removes all resources)
+aws cloudformation delete-stack --stack-name bridge-service --region ca-central-1

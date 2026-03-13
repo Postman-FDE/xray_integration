@@ -1,0 +1,9 @@
+1. Multiple workspaces in a single sync run
+2. Each workspace to have multiple collections mapped to test plans. 
+3. The collections to be of 3 structures: 
+    a. Collection -> folders mapped to test protocol, requests inside each folder. 
+    b. Collection -> folders & requests mapped to test protocols, each folder to have nested sub folders and requests. 
+    c. Collection -> folders mapped to test protocols, each folder's requests/ sub folders can be mapped to entirely different test protocols (conflict check)
+
+4. Scheduler behavior. 
+5. Huge no of data to sync - 3 monitors with a total of 50-100+ tests between them. 
