@@ -1,7 +1,16 @@
-#Login
+# 1. Login to AWS
 aws configure
 
-Create the CloudFormation stack
+# 2. Get your Account ID
+aws sts get-caller-identity --query "Account" --output text
+
+# 3. Get your VPC ID
+aws ec2 describe-vpcs --query "Vpcs[0].VpcId" --output text
+
+# 4. Get Subnet IDs (pick two from different availability zones)
+aws ec2 describe-subnets --query "Subnets[*].[SubnetId,AvailabilityZone]" --output table
+
+# 5. Create the CloudFormation stack
 aws cloudformation create-stack \
   --stack-name bridge-service \
   --template-body file://infra/cloudformation.yml \
