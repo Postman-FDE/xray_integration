@@ -67,6 +67,26 @@ SYNC_CRON=0 * * * *                   # Cron expression (every hour)
 PORT=3003
 ```
 
+#### Cron expression format
+
+```
+┌───────── minute (0-59)
+│ ┌───────── hour (0-23)
+│ │ ┌───────── day of month (1-31)
+│ │ │ ┌───────── month (1-12)
+│ │ │ │ ┌───────── day of week (0-7, where 0 and 7 are Sunday)
+│ │ │ │ │
+* * * * *
+```
+
+| Schedule | Expression |
+|----------|------------|
+| Every hour | `0 * * * *` |
+| Every 30 minutes | `*/30 * * * *` |
+| Every 15 minutes | `*/15 * * * *` |
+| Every 2 hours | `0 */2 * * *` |
+| Once a day at midnight | `0 0 * * *` |
+
 ### How it connects
 
 All monitor data is fetched via the Postman public API using `PM_API_KEY`:

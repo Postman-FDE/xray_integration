@@ -49,7 +49,16 @@ export function startScheduler(options = {}) {
     }
   });
 
-  console.log('[Scheduler] Scheduler started! Next run at the top of the hour.');
+  console.log(`[Scheduler] Scheduler started! Cron: ${cronExpression}`);
+
+  // Run immediately on start, then follow the cron schedule
+  console.log('[Scheduler] Running initial sync...');
+  runNow(workspaceIds).then(results => {
+    const totalSynced = results.reduce((sum, r) => sum + (r.totalSynced || 0), 0);
+    console.log(`[Scheduler] Initial sync completed. Synced ${totalSynced} runs.`);
+  }).catch(error => {
+    console.error('[Scheduler] Initial sync failed:', error.message);
+  });
 }
 
 /**

@@ -36,6 +36,17 @@ export async function syncCollectionMonitors({ collection, jobId }) {
   // Build folderMap from collection items (maps request IDs to folder names with test keys)
   const folderMap = buildFolderMap(collection);
   
+  const uniqueFolders = [...new Set(Object.values(folderMap).filter(Boolean))];
+  console.log(`Folder map: ${Object.keys(folderMap).length} request(s) mapped to ${uniqueFolders.length} test key(s)`);
+  for (const folder of uniqueFolders) {
+    const count = Object.values(folderMap).filter(v => v === folder).length;
+    console.log(`  ${extractTestKeyFromName(folder) || '(none)'} → ${folder} (${count} request(s))`);
+  }
+  const unmappedCount = Object.values(folderMap).filter(v => v === null).length;
+  if (unmappedCount > 0) {
+    console.log(`  ⚠ ${unmappedCount} request(s) not mapped to any test key`);
+  }
+
   const monitors = await getMonitors({ collectionId: collectionUid });
   console.log(`Found ${monitors.length} monitor(s) for collection`);
   
@@ -158,6 +169,11 @@ async function syncSingleRun({
       return { runId: run.id, status: 'skipped', reason: 'no tests mapped' };
     }
 
+    console.log(`  Xray payload: ${xrayPayload.tests.length} test(s) for test plan ${testPlanId}`);
+    for (const test of xrayPayload.tests) {
+      console.log(`    ${test.testKey} → ${test.status} (${test.comment?.split('\n')[0] || 'no comment'})`);
+    }
+
     const xrayResult = await importXrayJson(xrayPayload);
     console.log(`✓ Run ${run.id} → ${xrayResult.key} (${xrayPayload.tests.length} tests)`);
 
@@ -218,12 +234,18 @@ function buildFolderMap(collection) {
 
       if (item.item && Array.isArray(item.item)) {
         walk(item.item, currentFolder);
-      } else if (item.id && currentFolder) {
-        folderMap[item.id] = currentFolder;
+      } else if (item.id) {
+        folderMap[item.id] = hasTestKey ? item.name : (currentFolder || null);
       }
     }
   }
 
   walk(collection.item, null);
   return folderMap;
+}
+
+function extractTestKeyFromName(name) {
+  if (!name) return null;
+  const match = name.match(/^([A-Z]+-\d+)\s*\|/);
+  return match ? match[1] : null;
 }

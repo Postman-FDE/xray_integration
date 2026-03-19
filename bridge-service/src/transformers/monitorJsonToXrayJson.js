@@ -38,6 +38,8 @@ export function transformToXrayJson(runLog, folderMap = {}, options = {}) {
   // Build item map from beforeItem events (itemRef -> itemInfo)
   const itemMap = buildItemMap(log);
   
+  console.log(`  Run ${runId} (${region || 'unknown region'}): ${Object.keys(itemMap).length} item(s) in log`);
+  
   // Extract assertions and group by folder (using folderMap)
   const testResults = extractTestResults(log, itemMap, folderMap);
   
@@ -113,6 +115,8 @@ function extractTestResults(log, itemMap, folderMap) {
   let totalAssertionEvents = 0;
   let unmappedAssertionEvents = 0;
   
+  const loggedRequests = new Set();
+  
   for (const entry of log) {
     if (entry.event === 'assertion' && entry.args?.assertion) {
       totalAssertionEvents++;
@@ -122,6 +126,12 @@ function extractTestResults(log, itemMap, folderMap) {
       
       const folderName = folderMap[itemInfo.id] || null;
       const testKey = extractTestKey(folderName) || extractTestKey(itemInfo.name);
+      
+      if (!loggedRequests.has(itemInfo.id)) {
+        loggedRequests.add(itemInfo.id);
+        const source = extractTestKey(itemInfo.name) ? 'request name' : (folderName ? 'folder' : 'none');
+        console.log(`    ${itemInfo.name} → ${testKey || '(unmapped)'} (via ${source}${folderName ? ': ' + folderName : ''})`);
+      }
       
       if (!testKey) {
         unmappedAssertionEvents++;

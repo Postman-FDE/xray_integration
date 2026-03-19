@@ -132,7 +132,7 @@ Resources:
             - ContainerPort: 3003
           Environment:
             - Name: DATABASE_URL
-              Value: !Sub postgresql://xray:${DbPassword}@${Database.Endpoint.Address}:5432/xray_bridge
+              Value: !Sub postgresql://xray:${DbPassword}@${Database.Endpoint.Address}:5432/xray_bridge?sslmode=no-verify
             - Name: XRAY_CLIENT_ID
               Value: !Ref XrayClientId
             - Name: XRAY_CLIENT_SECRET
