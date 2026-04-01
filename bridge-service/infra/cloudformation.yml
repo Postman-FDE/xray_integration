@@ -26,16 +26,16 @@ Parameters:
     Type: String
     NoEcho: true
 
-  PostmanApiUrl:
-    Type: String
-    Default: https://api.getpostman.com
-
   PostmanWorkspaceIds:
     Type: String
 
   SyncBaseTime:
     Type: String
-    Default: '2026-01-01T00:00:00Z'
+    Default: '2026-04-01T00:00:00Z'
+
+  SyncCron:
+    Type: String
+    Default: '0 * * * *'
 
   DbPassword:
     Type: String
@@ -119,8 +119,8 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: bridge-service
-      Cpu: '256'
-      Memory: '512'
+      Cpu: '512'
+      Memory: '1024'
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
@@ -139,14 +139,14 @@ Resources:
               Value: !Ref XrayClientSecret
             - Name: PM_API_KEY
               Value: !Ref PostmanApiKey
-            - Name: POSTMAN_API_URL
-              Value: !Ref PostmanApiUrl
             - Name: POSTMAN_WORKSPACE_IDS
               Value: !Ref PostmanWorkspaceIds
             - Name: SYNC_BASE_TIME
               Value: !Ref SyncBaseTime
             - Name: SYNC_ENABLED
               Value: 'true'
+            - Name: SYNC_CRON
+              Value: !Ref SyncCron
             - Name: PORT
               Value: '3003'
           LogConfiguration:
