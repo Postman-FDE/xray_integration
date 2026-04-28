@@ -99,14 +99,47 @@ All monitor data is fetched via the Postman public API using `PM_API_KEY`:
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/sync/run` | Sync monitor runs to Xray |
-| `POST` | `/sync/junit` | Upload JUnit XML to Xray |
-| `GET` | `/health` | Service health check |
-| `GET` | `/scheduler/status` | Scheduler and sync state |
-| `POST` | `/scheduler/start` | Start cron scheduler |
-| `POST` | `/scheduler/stop` | Stop cron scheduler |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/health` | none | Liveness check (process is up) |
+| `GET` | `/ready` | none | Readiness check (process is up + DB reachable) |
+| `POST` | `/sync/run` | Bearer | Sync monitor runs to Xray |
+| `POST` | `/sync/junit` | Bearer | Upload JUnit XML to Xray |
+| `GET` | `/scheduler/status` | Bearer | Scheduler and sync state |
+| `POST` | `/scheduler/start` | Bearer | Start cron scheduler |
+| `POST` | `/scheduler/stop` | Bearer | Stop cron scheduler |
+
+### Inbound auth
+
+Protected endpoints (`/sync/*`, `/scheduler/*`) require
+`Authorization: Bearer <BRIDGE_TRIGGER_SECRET>`. If the env var is unset
+those endpoints respond `503` -- the bridge itself still starts and the cron
+sync continues to run. Generate a strong value with `openssl rand -hex 32`.
+
+To rotate without downtime, set `BRIDGE_TRIGGER_SECRET_PREVIOUS` to the old
+value while callers switch over; both tokens are accepted during the window.
+
+```bash
+curl -X POST https://<bridge-url>/sync/run \
+  -H "Authorization: Bearer $BRIDGE_TRIGGER_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"workspaceId":"your-workspace-id"}'
+```
+
+A copy-paste GitHub Actions workflow lives at
+[`examples/github-actions/trigger-sync.yml`](./examples/github-actions/trigger-sync.yml).
+
+**Transport.** The bridge does not terminate TLS itself -- run it behind a
+load balancer or CDN (ALB, CloudFront, API Gateway, etc.) that handles
+HTTPS. The bearer secret is sent in the `Authorization` header and would be
+trivially observable over plain HTTP.
+
+**Rate limiting.** Protected routes are capped at 10 requests/minute per
+client IP as defense-in-depth. The bridge sets `trust proxy: 1`, so the
+real client IP is read from `X-Forwarded-For` on the first hop. If your
+deployment puts multiple proxies in front of the bridge, update that value
+in `src/server.js`. The cron-driven sync bypasses HTTP entirely and is not
+affected by this limit.
 
 ---
 

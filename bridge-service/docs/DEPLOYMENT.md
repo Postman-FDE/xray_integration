@@ -107,18 +107,19 @@ aws cloudformation create-stack \
     ParameterKey=DbPassword,ParameterValue=your-db-password
 ```
 
-### Step 3: Initialize database
+### Step 3: Database initialization
 
-```bash
-# Connect to the running ECS task and run migration
-# Or connect to RDS directly and run the schema
-aws ecs execute-command --cluster bridge-service --task <task-id> \
-  --container bridge-service --interactive \
-  --command "npx prisma db push"
-```
+The container's start command runs `npx prisma db push` against the
+configured `DATABASE_URL` before launching the server, so the schema is
+created on the first task start. No manual step is required. If you ever
+need to reset the schema, redeploy a fresh task -- `db push` is idempotent.
+
+> The `prisma/migrations/` directory is intentionally absent. The supported
+> path is `prisma db push` (schema-driven), which is what the Dockerfile
+> runs.
 
 ### What CloudFormation provisions
-- **ECS Fargate cluster** with 1 task (256 CPU, 512 MB)
+- **ECS Fargate cluster** with 1 task (512 CPU, 1024 MB)
 - **RDS PostgreSQL 15** (db.t3.micro, 20GB, encrypted, 7-day backups)
 - **Security groups** (ECS can reach RDS; port 3003 open for HTTP)
 - **CloudWatch log group** (30-day retention)

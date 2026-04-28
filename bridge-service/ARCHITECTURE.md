@@ -1,459 +1,320 @@
 # Architecture
 
-This document describes the architecture, directory structure, and code flow of the postman-xray-bridge service.
+How `postman-xray-bridge` is wired together: directory layout, request and
+sync flows, persistence, scheduler, and parallelism guarantees.
 
 ---
 
 ## Overview
 
-The service syncs Postman Monitor run results to Jira Xray. It fetches run data from the internal Monitor API (newman-remote-api), transforms it to Xray format, and pushes it to Xray Cloud.
+The bridge pulls **Postman Monitor** run results from the **Postman public
+API** and pushes them as **Test Executions** into **Jira Xray**. It can also
+accept a **JUnit XML** upload and forward that directly to Xray.
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Postman API    │     │  Monitor API    │     │   Xray Cloud    │
-│  (collections)  │     │ (newman-remote) │     │   (results)     │
-└────────┬────────┘     └────────┬────────┘     └────────▲────────┘
-         │                       │                       │
-         └───────────┬───────────┘                       │
-                     │                                   │
-              ┌──────▼──────┐                           │
-              │   Bridge    │───────────────────────────┘
-              │   Service   │
-              └─────────────┘
+┌──────────────────┐       ┌─────────────────┐
+│   Postman API    │       │   Xray Cloud    │
+│ (api.getpostman) │       │      API        │
+└────────▲─────────┘       └────────▲────────┘
+         │                          │
+         │   collections / monitors │  POST /api/v2/import/execution
+         │   /executions / runs     │  POST /api/v2/import/execution/junit
+         │                          │
+       ┌─┴────── Bridge Service ────┴─┐
+       │  Express + Postgres (Prisma) │
+       │  cron + on-demand HTTP       │
+       └──────────────────────────────┘
 ```
+
+There is **no internal/private Postman API** in the data path. Authentication
+to Postman is via `PM_API_KEY`; authentication to Xray Cloud is via
+`XRAY_CLIENT_ID` + `XRAY_CLIENT_SECRET` (exchanged for a short-lived bearer).
 
 ---
 
-## Directory Structure
+## Directory layout
 
 ```
-postman-xray-bridge/
+bridge-service/
 ├── prisma/
-│   ├── schema.prisma         # Database schema (SyncState, SyncJob, SyncRun)
-│   └── client.js             # Singleton Prisma client instance
+│   ├── schema.prisma                  # SyncState, SyncJob, SyncRun
+│   ├── migrations/                    # See `prisma db push` note in README
+│   └── client.js                      # Singleton Prisma client
 │
 ├── src/
-│   ├── server.js             # Express app entry point
-│   ├── config.js             # Environment configuration
-│   ├── scheduler.js          # Cron scheduler (node-cron)
+│   ├── server.js                      # Express bootstrap, scheduler boot
+│   ├── config.js                      # Env-driven config + validateConfig()
+│   ├── scheduler.js                   # node-cron + immediate run-on-start
 │   │
 │   ├── routes/
-│   │   └── index.js          # HTTP route definitions
+│   │   └── index.js                   # All HTTP routes
 │   │
-│   ├── controllers/          # HTTP request handlers
-│   │   ├── syncController.js # POST /sync/run, /sync/junit
-│   │   └── jobsController.js # Scheduler endpoints
+│   ├── controllers/
+│   │   ├── sync.controller.js         # POST /sync/run, /sync/junit
+│   │   └── jobsController.js          # /scheduler/status|start|stop
 │   │
-│   ├── services/             # Business logic orchestration
-│   │   └── syncService.js    # Main sync orchestration
+│   ├── services/
+│   │   └── sync.service.js            # Orchestration: workspaces -> collections
 │   │
-│   ├── jobs/                 # Worker jobs
-│   │   └── syncMonitorRunsJob.js  # Sync monitor runs to Xray
+│   ├── jobs/
+│   │   └── syncMonitorRuns.job.js     # Per-collection: monitors -> runs -> Xray
 │   │
-│   ├── clients/              # External API clients
-│   │   ├── postmanClient.js  # Postman API (collections)
-│   │   ├── monitorClient.js  # Monitor API (newman-remote-api)
-│   │   ├── xrayClient.js     # Xray Cloud API
-│   │   └── jiraClient.js     # Jira REST API
+│   ├── clients/
+│   │   ├── postmanClient.js           # Workspaces & collections
+│   │   ├── monitorClient.js           # Monitors, executions, runs (Postman API)
+│   │   └── xrayClient.js              # Xray Cloud auth + import
 │   │
-│   ├── transformers/         # Data transformation
-│   │   ├── monitorResultToXrayJson.js  # Monitor run → Xray JSON
-│   │   └── junitToXrayXml.js           # JUnit XML → Xray XML
+│   ├── transformers/
+│   │   ├── monitorJsonToXrayJson.js   # Monitor run log -> Xray JSON payload
+│   │   └── junitToXrayXml.js          # Postman JUnit XML -> tagged Xray XML
 │   │
-│   ├── store/                # Database access
-│   │   └── syncState.js      # Sync state queries (uses prisma/client.js)
+│   ├── store/
+│   │   └── syncState.js               # Sync state / job / run persistence
 │   │
 │   ├── utils/
-│   │   ├── retry.js          # Retry helper
-│   │   └── testResolver.js   # Jira test key resolution
+│   │   └── retry.js                   # Exponential backoff (skips 4xx)
 │   │
 │   └── middleware/
-│       ├── errorHandler.js   # Error handling
-│       ├── logging.js        # Request logging
-│       └── upload.js         # File upload handling
+│       ├── auth.js                    # Bearer-token gate (BRIDGE_TRIGGER_SECRET)
+│       ├── rateLimit.js               # Per-IP cap on mutating routes
+│       ├── upload.js                  # Multer for /sync/junit
+│       ├── logging.js                 # Request log
+│       └── errorHandler.js            # ApiError / XrayApiError -> JSON response
 │
-├── docker-compose.yml        # PostgreSQL container
-├── .env.example              # Environment template
-└── package.json
+├── infra/cloudformation.yml           # Reference ECS Fargate + RDS stack
+├── docker-compose.yml                 # Local: bridge + Postgres
+├── docs/                              # Setup + deployment guides
+└── examples/github-actions/           # Sample workflow_dispatch trigger
 ```
 
 ---
 
-## Layered Architecture
+## Layered call flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. CONTROLLERS                                              │
-│     HTTP request handlers                                    │
-│     Entry point for API requests                             │
-├─────────────────────────────────────────────────────────────┤
-│  2. SERVICES                                                 │
-│     Business logic orchestration                             │
-│     Called by controllers AND scheduler                      │
-├─────────────────────────────────────────────────────────────┤
-│  3. JOBS                                                     │
-│     Focused workers for specific tasks                       │
-│     Called by services                                       │
-├─────────────────────────────────────────────────────────────┤
-│  4. CLIENTS                                                  │
-│     External API clients                                     │
-│     Called by jobs                                           │
-├─────────────────────────────────────────────────────────────┤
-│  5. DATA LAYER                                               │
-│     Prisma (database), Transformers (data shaping)           │
-│     Called by jobs                                           │
-└─────────────────────────────────────────────────────────────┘
+Route ─▶ Controller ─▶ Service ─▶ Job ─▶ Clients + Prisma + Transformers
 ```
 
-### Flow Direction
-
-```
-Route → Controller → Service → Job → Clients + Prisma + Transformers
-```
-
-**Important:** Flow is one-directional. Jobs do NOT call back to services.
+One direction. Jobs do **not** call services; transformers do not perform
+I/O; clients do not depend on database state. The DB layer
+(`store/syncState.js`) is **best-effort** -- every call is wrapped in
+try/catch so a database hiccup does not crash a sync, except in one place
+(see "Crash safety" below).
 
 ---
 
-## Sync Flow
+## HTTP entry points
 
-### Entry Points
+| Method | Path                 | Auth   | Purpose                                  |
+|--------|----------------------|--------|------------------------------------------|
+| GET    | `/health`            | none   | Liveness probe (process is up)           |
+| GET    | `/ready`             | none   | Readiness probe (process up + DB reachable, 2s timeout) |
+| POST   | `/sync/run`          | bearer | Sync monitor runs to Xray                |
+| POST   | `/sync/junit`        | bearer | Upload JUnit XML (multipart) to Xray     |
+| GET    | `/scheduler/status`  | bearer | Cron + sync-state snapshot               |
+| POST   | `/scheduler/start`   | bearer | Start the cron loop                      |
+| POST   | `/scheduler/stop`    | bearer | Stop the cron loop                       |
 
-```
-┌─────────────────┐     ┌─────────────────┐
-│   HTTP Request  │     │   Cron Trigger  │
-│  POST /sync/run │     │  (scheduler.js) │
-└────────┬────────┘     └────────┬────────┘
-         │                       │
-    Controller              scheduler.runNow()
-         │                       │
-         └───────────┬───────────┘
-                     │
-              syncService.syncRuns()
-```
-
-### Detailed Flow
+All `bearer` routes share the same middleware chain in `routes/index.js`:
 
 ```
-1. syncService.syncRuns({ workspaceId })
-   │
-   ├── Get Xray-linked collections (postmanClient)
-   │   └── Filter collections with test-plan-id variable
-   │
-   └── For each collection:
-       │
-       └── syncMonitorRunsJob.syncCollectionMonitors()
-           │
-           ├── Get monitors for collection (monitorClient)
-           │
-           └── For each monitor:
-               │
-               ├── Get lastSyncedTimestamp (prisma)
-               ├── Get jobs since timestamp (monitorClient)
-               │
-               └── For each job:
-                   │
-                   └── For each run:
-                       │
-                       ├── Get run summary (monitorClient)
-                       ├── Transform to Xray format (transformer)
-                       ├── Push to Xray (xrayClient)
-                       └── Update sync state (prisma)
+triggerRateLimit ─▶ requireBridgeSecret ─▶ [uploadXml for /sync/junit] ─▶ controller
 ```
+
+`triggerRateLimit` runs first so unauthenticated brute-force attempts also
+count against the bucket. See `src/middleware/auth.js` and
+`src/middleware/rateLimit.js` for details.
 
 ---
 
-## Database Schema
+## Monitor sync flow (`POST /sync/run` and cron)
+
+Both entry points end in `services/sync.service.js#syncRuns`. Both fan out
+across workspaces in parallel (`Promise.all`).
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  SyncState                                                   │
-│  ─────────                                                   │
-│  Tracks last synced run per source (monitor/collection)      │
-│                                                              │
-│  PK: (sourceId, sourceType)                                  │
-│  Fields: sourceName, testPlanKey, lastRunId, lastRunTimestamp│
-├─────────────────────────────────────────────────────────────┤
-│  SyncJob                                                     │
-│  ───────                                                     │
-│  Audit log of each sync job execution                        │
-│                                                              │
-│  PK: id (auto-increment)                                     │
-│  Fields: status, runsTotal, runsSuccess, runsFailed          │
-├─────────────────────────────────────────────────────────────┤
-│  SyncRun                                                     │
-│  ───────                                                     │
-│  Individual runs synced within a job                         │
-│                                                              │
-│  PK: id (auto-increment)                                     │
-│  FK: jobId → SyncJob                                         │
-│  Fields: sourceId, sourceType, runId, status, xrayExecKey    │
-└─────────────────────────────────────────────────────────────┘
+syncRuns({ workspaceId })
+│
+├── createSyncJob()                       # Postgres row; abort if DB unavailable
+│
+├── postmanClient.getCollectionsWithVariables(workspaceId)
+│       fetches every collection in the workspace, then loads
+│       each collection's variables + items in parallel
+│
+├── filterXrayLinkedCollections()         # keep collections with `test-plan-id` var
+│
+└── Promise.all(xrayCollections.map(c =>
+      syncMonitorRunsJob.syncCollectionMonitors({ collection: c, jobId })))
+        │
+        ├── buildFolderMap(collection)    # request-id -> folder name with test key
+        ├── monitorClient.getMonitors({ collectionId })
+        │
+        └── Promise.all(monitors.map(m => syncSingleMonitor(...)))
+                │
+                ├── getLastSyncedTimestamp(monitorId, 'monitor')
+                ├── effectiveSince = max(SYNC_BASE_TIME, lastSynced)
+                ├── monitorClient.getAllMonitorJobs(monitorId, { sinceTimestamp })
+                │       cursor-paginated, sorted oldest-first so checkpoints
+                │       advance monotonically
+                │
+                └── for each job (sequential):
+                        for each run (sequential):
+                            ├── monitorClient.getRunLog(monitorId, runId)
+                            ├── monitorJsonToXrayJson.transformToXrayJson(...)
+                            │
+                            ├── if 0 mapped tests -> skip + log warning
+                            │
+                            ├── xrayClient.importXrayJson(payload)  (with retry)
+                            └── updateLastSynced(...) + recordSyncRun(...)
 ```
+
+### Test-key mapping
+
+Tests in Xray are matched by **issue key** (`PF-52`, `LOAN-3`, etc.). The
+bridge derives the key from the **collection folder name** containing the
+request, with the convention:
+
+```
+PF-52 | Create Loan
+   └─ regex: /^([A-Z]+-\d+)\s*\|/
+```
+
+`buildFolderMap` walks the collection tree (nested folders supported) and
+produces `requestId -> folderName`. The transformer reads the **assertion
+events** out of the run log, ties each assertion back to a request via the
+`beforeItem` event's cursor ref, looks up the folder name, and groups
+assertions per test key. Requests without a matching test key are dropped
+with a log line; if no tests at all are mapped for a run, the bridge
+**skips the Xray push entirely** rather than push an empty execution.
+
+### Checkpoint semantics
+
+The "last synced" timestamp uses the **job's** `finishedAt` (with fallbacks
+to the run's `finishedAt` and now), not the run's, because a single
+execution can produce multiple runs in regional monitors and we want a
+monotonic high-watermark per monitor. On retry, a duplicate run will be
+**re-pushed to Xray** -- Xray's `import/execution` endpoint creates a new
+test execution each time. We don't currently dedupe; if the customer
+re-triggers a sync after a partial failure, expect duplicate executions for
+the runs that succeeded.
+
+---
+
+## JUnit upload flow (`POST /sync/junit`)
+
+Independent of the monitor flow. Multer writes the upload to a temp file;
+the controller reads it, calls `transformJUnitXml` to inject `test_key`
+properties from testsuite names, and posts to Xray's
+`/api/v2/import/execution/junit` (with optional query params for project,
+test plan, test execution, environments, revision). Temp file is cleaned up
+on both success and error paths.
+
+---
+
+## Persistence
+
+Postgres via Prisma; schema in `prisma/schema.prisma`.
+
+| Table        | Role                                                  |
+|--------------|-------------------------------------------------------|
+| `sync_state` | One row per `(sourceId, sourceType)` -- last run id + timestamp + test plan key. Used as the per-monitor checkpoint. |
+| `sync_jobs`  | One row per top-level sync invocation. Status: `running` / `success` / `partial` / `failed`. |
+| `sync_runs`  | One row per individual run sync attempt within a job. Stores Xray exec key on success or error message on failure. |
+
+> The `prisma/migrations/` directory currently contains a stale init that
+> does **not** match the live schema. The Dockerfile uses `prisma db push`
+> which generates the schema directly from `schema.prisma` and bypasses
+> migrations -- this is the supported path. See README for context.
+
+### Crash safety
+
+`syncRuns` calls `createSyncJob()` first and aborts the entire sync if it
+returns `null` (DB unavailable). This is intentional: without a job row we
+cannot record which runs synced, and a successful Xray push followed by a
+crash before checkpointing would silently re-sync the same run on the next
+tick. Failing closed up front is preferable.
+
+Other DB writes (checkpoint update, per-run record, job completion) are
+best-effort -- they log on failure but do not interrupt processing. Worst
+case: the next sync tick re-pushes runs that were already in Xray.
 
 ---
 
 ## Scheduler
 
-The cron scheduler runs periodic syncs:
+`src/scheduler.js` wraps `node-cron`. Behavior:
 
-```
-┌─────────────────┐
-│  server.js      │
-│  (on startup)   │
-└────────┬────────┘
-         │ if SYNC_ENABLED
-         ▼
-┌─────────────────┐
-│  scheduler.js   │
-│  startScheduler │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐     cron fires      ┌─────────────────┐
-│   node-cron     │────────────────────▶│ syncService     │
-│   (0 * * * *)   │                     │ .syncRuns()     │
-└─────────────────┘                     └─────────────────┘
-```
+- On bridge startup, if `SYNC_ENABLED=true` and `POSTMAN_WORKSPACE_IDS` is
+  non-empty, the scheduler is started automatically.
+- Starting the scheduler runs an **immediate sync** before the first cron
+  fire.
+- The cron callback iterates workspaces **sequentially** (HTTP path
+  parallelizes them).
+- `POST /scheduler/start|stop|status` provide runtime control without a
+  redeploy.
 
-**Managing scheduler via API:**
-- `POST /scheduler/start` - Start with custom cron
-- `POST /scheduler/stop` - Stop scheduler
-- `GET /scheduler/status` - Check status
+The cron cadence comes from `SYNC_CRON` (default `0 * * * *`, hourly).
 
 ---
 
-## Error Handling
+## Parallelism, in practice
 
-### Run Sync Failures
+| Level                  | Behavior      | Where                                         |
+|------------------------|---------------|-----------------------------------------------|
+| Workspaces             | parallel      | `controllers/sync.controller.js`, `scheduler.js#runNow` |
+| Collections / workspace| parallel      | `services/sync.service.js`                    |
+| Monitors / collection  | parallel      | `jobs/syncMonitorRuns.job.js`                 |
+| Jobs / monitor         | **sequential**| `jobs/syncMonitorRuns.job.js`                 |
+| Runs / job             | **sequential**| `jobs/syncMonitorRuns.job.js`                 |
 
-When a run fails to sync:
-1. Error is logged
-2. `SyncRun` record created with `status: 'error'`
-3. `lastSyncedTimestamp` is NOT updated
-4. Continues processing remaining runs
-5. Failed runs can be retried later
-
-### Job Status
-
-| Status | Meaning |
-|--------|---------|
-| `running` | Job in progress |
-| `success` | All runs synced |
-| `partial` | Some runs failed |
-| `failed` | All runs failed |
+The lower two levels are sequential on purpose: pushing runs in monotonic
+finish-time order means the checkpoint always advances safely. Going
+parallel there is possible but requires careful checkpoint accounting on
+partial failure.
 
 ---
 
-## Parallelization
+## External APIs called
 
-The architecture is designed to support parallelization at multiple levels. Since this service is I/O-bound (HTTP calls, database queries), parallel execution significantly improves performance even though Node.js is single-threaded.
+| API                          | Endpoint(s) used                                                                                                         | Auth                            |
+|------------------------------|--------------------------------------------------------------------------------------------------------------------------|---------------------------------|
+| Postman                      | `GET /collections?workspace=...`, `GET /collections/:uid`, `GET /monitors?collectionUid=...`, `GET /monitors/:id/executions[?cursor=...]`, `GET /monitors/:mid/executions/:eid/runs`, `GET /monitors/:mid/runs/:rid/results` | `X-Api-Key: PM_API_KEY` |
+| Xray Cloud                   | `POST /api/v2/authenticate`, `POST /api/v2/import/execution`, `POST /api/v2/import/execution/junit`                       | client-credentials -> bearer    |
 
-### Why Parallelization Works in Node.js
-
-Node.js uses an event loop with non-blocking I/O. While JavaScript execution is single-threaded, I/O operations (HTTP requests, DB queries) can run concurrently. Multiple requests are sent simultaneously, and the event loop handles responses as they arrive.
-
-```
-Sequential:  [fetch1][wait][fetch2][wait][fetch3][wait]  → 3 seconds
-Parallel:    [fetch1]
-             [fetch2]  → all waiting concurrently        → 1 second
-             [fetch3]
-```
-
-### Parallelization Levels
-
-The service can be parallelized at three levels:
-
-```
-syncService.syncRuns()
-    │
-    └── Promise.all(collections.map(...))     ← Level 1: Collections
-            │
-            └── syncCollectionMonitors()
-                    │
-                    └── Promise.all(monitors.map(...))   ← Level 2: Monitors
-                            │
-                            └── syncSingleMonitor()
-                                    │
-                                    └── Promise.all(runs.map(...))   ← Level 3: Runs
-                                            │
-                                            └── syncSingleRun()
-```
-
-### Implementation Pattern
-
-**Service layer controls parallelization strategy. Jobs remain stateless and focused.**
-
-**Level 1 - Collections (in syncService.js):**
-```javascript
-// Replace for...of loop with Promise.all
-const collectionResults = await Promise.all(
-  xrayCollections.map(collection => 
-    syncMonitorRunsJob.syncCollectionMonitors({ collection, ... })
-  )
-);
-```
-
-**Level 2 - Monitors (in syncMonitorRunsJob.js):**
-```javascript
-const monitorResults = await Promise.all(
-  monitors.map(monitor => 
-    syncSingleMonitor({ monitor, ... })
-  )
-);
-```
-
-**Level 3 - Runs (in syncMonitorRunsJob.js):**
-```javascript
-const syncedRuns = await Promise.all(
-  runs.map(run => syncSingleRun({ run, ... }))
-);
-```
-
-### Adding Concurrency Limits
-
-If API rate limits require throttling, use `p-limit`:
-
-```javascript
-import pLimit from 'p-limit';
-const limit = pLimit(5); // Max 5 concurrent
-
-await Promise.all(
-  items.map(item => limit(() => processItem(item)))
-);
-```
-
-### Logging Considerations
-
-Parallel execution causes interleaved logs. Options:
-1. Accept interleaved logs (simplest)
-2. Add prefixes: `[Collection:X][Monitor:Y] Processing...`
-3. Buffer logs per-job and print at completion
+The Xray bearer is cached in-process for ~55 minutes; `authenticate()`
+returns the cached token until it nears expiry.
 
 ---
 
-## Async Jobs (Future)
+## Inbound auth + rate limiting
 
-The architecture supports making sync jobs asynchronous (return immediately with job ID, poll for status).
+See `src/middleware/auth.js` and `src/middleware/rateLimit.js`. Summary:
 
-### Current Flow (Synchronous)
-
-```
-Client                    Controller              Service
-  │                           │                      │
-  │── POST /sync/run ────────▶│                      │
-  │                           │── syncRuns() ───────▶│
-  │                           │                      │ (processing...)
-  │                           │                      │ (5-30 seconds)
-  │                           │◀── results ──────────│
-  │◀── 200 { results } ───────│                      │
-```
-
-### Async Flow (Future)
-
-```
-Client                    Controller              Service
-  │                           │                      │
-  │── POST /sync/run ────────▶│                      │
-  │                           │── startSyncJob() ───▶│
-  │                           │◀── { jobId } ────────│
-  │◀── 202 { jobId } ─────────│                      │
-  │                           │         │ (background processing)
-  │── GET /jobs/:id/status ──▶│         ▼
-  │◀── { status: running } ───│   syncRuns() running
-  │                           │         │
-  │── GET /jobs/:id/status ──▶│         ▼
-  │◀── { status: complete } ──│   Job finished
-```
-
-### Implementation Approach
-
-**Controller (returns immediately):**
-```javascript
-export async function runSync(req, res) {
-  const jobId = await syncService.startSyncJob(req.body);
-  res.status(202).json({ 
-    jobId, 
-    status: 'started',
-    statusUrl: `/jobs/${jobId}/status`
-  });
-}
-```
-
-**Service (spawns background work):**
-```javascript
-export async function startSyncJob(params) {
-  const job = await syncState.createSyncJob();
-  
-  // Fire and forget - don't await
-  processInBackground(job.id, params);
-  
-  return job.id;
-}
-
-async function processInBackground(jobId, params) {
-  try {
-    await syncMonitorRunsJob.syncCollectionMonitors(...);
-    await syncState.completeSyncJob(jobId, 'success');
-  } catch (error) {
-    await syncState.completeSyncJob(jobId, 'failed');
-  }
-}
-```
-
-**Status endpoint:**
-```javascript
-// GET /jobs/:jobId/status
-export async function getJobStatus(req, res) {
-  const job = await syncState.getSyncJob(req.params.jobId);
-  res.json({
-    jobId: job.id,
-    status: job.status,
-    progress: { synced: job.runsSuccess, failed: job.runsFailed }
-  });
-}
-```
-
-### Why This Works
-
-1. **Controllers are thin** - Can return immediately without blocking
-2. **Service manages lifecycle** - Creates job record, spawns work, tracks status
-3. **Jobs are stateless** - Can run in background, update their own status
-4. **Database tracks progress** - `SyncJob` table already exists for status
+- All mutating routes plus `GET /scheduler/status` require
+  `Authorization: Bearer <BRIDGE_TRIGGER_SECRET>`.
+- Without a configured secret, those routes return **503**. The bridge
+  itself still starts; cron continues to run.
+- `BRIDGE_TRIGGER_SECRET_PREVIOUS` is accepted alongside the current secret
+  during rotation.
+- Comparison is constant-time (SHA-256 + `crypto.timingSafeEqual`).
+- Per-IP rate limit: 10 req/min on protected routes. The cron path bypasses
+  HTTP and is unaffected.
+- The bridge sets `app.set('trust proxy', 1)` so `X-Forwarded-For` from a
+  single upstream proxy (LB / CloudFront) is honored. Adjust if you stack
+  multiple proxies.
 
 ---
 
-## Adding New Features
+## Configuration surface
 
-### Adding a New Sync Source (e.g., Collection Runs)
+All env-driven; defined in `src/config.js`. The required set:
 
-1. Create client: `clients/collectionRunClient.js`
-2. Create transformer: `transformers/collectionRunToXrayJson.js`
-3. Create job: `jobs/syncCollectionRunsJob.js`
-4. Update service: Call new job from `syncService.js`
-5. Update `SyncState` calls with `sourceType: 'collection_run'`
+| Variable                     | Purpose                                                  |
+|------------------------------|----------------------------------------------------------|
+| `DATABASE_URL`               | Postgres connection                                       |
+| `XRAY_CLIENT_ID` / `XRAY_CLIENT_SECRET` | Xray Cloud client credentials                  |
+| `PM_API_KEY`                 | Postman API key                                          |
+| `BRIDGE_TRIGGER_SECRET`      | Inbound bearer for protected routes                      |
 
-### Adding a New Endpoint
-
-1. Add route in `routes/index.js`
-2. Create controller method in `controllers/`
-3. Create service method in `services/`
-4. Create job if needed in `jobs/`
-
----
-
-## Environment Variables
-
-See `.env.example` for all configuration options.
-
-Key variables:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `XRAY_CLIENT_ID` | Yes | Xray Cloud API client ID |
-| `XRAY_CLIENT_SECRET` | Yes | Xray Cloud API secret |
-| `PM_API_KEY` | Yes | Postman API key |
-| `NEWMAN_REMOTE_API_URL` | Yes | Monitor API (newman-remote-api) URL |
-| `X_ACCESS_TOKEN` | Yes | Auth token for Monitor API |
-| `SYNC_BASE_TIME` | No | Only sync runs after this time |
+The optional set is documented at the top of `src/config.js` and in
+`.env.example`.

@@ -96,18 +96,16 @@ export async function runNow(workspaceIds) {
     throw new Error('No workspace ID(s) provided or configured');
   }
   
-  const results = [];
-  
-  for (const wsId of wsIds) {
-    try {
-      const result = await syncService.syncRuns({ workspaceId: wsId });
-      results.push(result);
-    } catch (error) {
-      console.error(`[Scheduler] Error syncing workspace ${wsId}:`, error.message);
-      results.push({ workspaceId: wsId, error: error.message, totalSynced: 0 });
-    }
-  }
-  
-  return results;
+  // Match the HTTP path: process workspaces in parallel.
+  return Promise.all(
+    wsIds.map(async (wsId) => {
+      try {
+        return await syncService.syncRuns({ workspaceId: wsId });
+      } catch (error) {
+        console.error(`[Scheduler] Error syncing workspace ${wsId}:`, error.message);
+        return { workspaceId: wsId, error: error.message, totalSynced: 0 };
+      }
+    })
+  );
 }
 
