@@ -1,0 +1,48 @@
+# Sample GitHub Action: trigger a one-off bridge sync on demand.
+#
+# Copy this file into the consuming repo at .github/workflows/trigger-sync.yml.
+#
+# Required repo (or environment) secrets:
+#   BRIDGE_URL              e.g. https://bridge.example.com
+#   BRIDGE_TRIGGER_SECRET   the same value the bridge has in its env
+#
+# Optional inputs at run-time:
+#   workspace_ids  comma-separated list of Postman workspace IDs.
+#                  If empty, the bridge falls back to POSTMAN_WORKSPACE_IDS
+#                  configured in its own env.
+
+name: Trigger Xray Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      workspace_ids:
+        description: 'Comma-separated Postman workspace IDs to sync. Leave empty to use the workspaces configured on the bridge (POSTMAN_WORKSPACE_IDS).'
+        required: false
+        type: string
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /sync/run
+        env:
+          BRIDGE_URL: ${{ secrets.BRIDGE_URL }}
+          BRIDGE_TRIGGER_SECRET: ${{ secrets.BRIDGE_TRIGGER_SECRET }}
+          WORKSPACE_IDS: ${{ inputs.workspace_ids }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${WORKSPACE_IDS}" ]; then
+            ids_json=$(printf '%s' "${WORKSPACE_IDS}" \
+              | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+            payload=$(jq -n --argjson ids "${ids_json}" '{workspaceIds: $ids}')
+          else
+            payload='{}'
+          fi
+
+          echo "POST ${BRIDGE_URL}/sync/run"
+          curl --fail-with-body -sS -X POST "${BRIDGE_URL}/sync/run" \
+            -H "Authorization: Bearer ${BRIDGE_TRIGGER_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "${payload}"
